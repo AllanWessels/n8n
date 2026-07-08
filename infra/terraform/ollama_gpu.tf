@@ -54,7 +54,12 @@ resource "google_compute_instance_template" "ollama" {
   tags = ["ollama"]
 
   disk {
-    source_image = "projects/ml-images/global/images/family/common-cu121-debian-11"
+    # Deep Learning VM image: NVIDIA driver + CUDA preinstalled. Google retires
+    # these families over time (the old common-cu121-debian-11 is gone) — this is
+    # a current CUDA 12.9 / driver 580 image on Ubuntu 22.04 LTS. If a future
+    # apply 404s here, run: gcloud compute images list --project ml-images \
+    #   --filter="family~common-cu" --format="value(family)"  and pick a live one.
+    source_image = "projects/ml-images/global/images/family/common-cu129-ubuntu-2204-nvidia-580"
     auto_delete  = true
     boot         = true
     disk_size_gb = 100
@@ -108,6 +113,13 @@ resource "google_compute_region_instance_group_manager" "ollama" {
   base_instance_name = "f1-ollama"
   target_size        = 0 # starts scaled to zero; see warm-up workflow note above.
 
+  # The g2 (L4 GPU) machine family isn't offered in every zone of a region — e.g.
+  # us-central1-f has no g2-standard-4 — so a regional MIG that spans all zones
+  # fails with "InstanceTemplate should be usable in all selected zones". Pin the
+  # group to the zones that actually have L4. (To retarget: gcloud compute
+  # machine-types list --filter="name=g2-standard-4 AND zone~<region>".)
+  distribution_policy_zones = ["us-central1-a", "us-central1-b", "us-central1-c"]
+
   version {
     instance_template = google_compute_instance_template.ollama[0].id
   }
@@ -117,12 +129,10 @@ resource "google_compute_region_instance_group_manager" "ollama" {
     port = 11434
   }
 
-  update_policy {
-    type                  = "PROACTIVE"
-    minimal_action        = "REPLACE"
-    max_surge_fixed       = 1
-    max_unavailable_fixed = 1
-  }
+  # No explicit update_policy: regional MIGs constrain fixed max_surge /
+  # max_unavailable to 0 or >= the region's zone count, which is brittle to hardcode.
+  # GCP's zone-aware default is fine here — this group is normally at 0 and holds at
+  # most 1-2 spot instances during a demo, so rolling-update tuning is moot.
 }
 
 resource "google_compute_region_autoscaler" "ollama" {
@@ -173,6 +183,9 @@ resource "google_compute_region_backend_service" "ollama" {
 
   backend {
     group = google_compute_region_instance_group_manager.ollama[0].instance_group
+    # Internal (INTERNAL) TCP backend services must use CONNECTION balancing; the
+    # provider default of UTILIZATION is rejected with a 400 for this scheme.
+    balancing_mode = "CONNECTION"
   }
 }
 

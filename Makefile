@@ -133,17 +133,26 @@ deploy: ## Apply Terraform to the GCP project (infra/terraform)
 	@echo "==> Deploying via Terraform (PROJECT_ID=$(PROJECT_ID) REGION=$(REGION))..."
 	PROJECT_ID=$(PROJECT_ID) REGION=$(REGION) bash scripts/deploy.sh
 
-gpu-up: ## Scale the Ollama GPU MIG instance group up (requires PROJECT_ID, REGION)
-	@echo "==> Scaling Ollama GPU instance group up (PROJECT_ID=$(PROJECT_ID) REGION=$(REGION))..."
-	@echo "Requires env: PROJECT_ID, REGION, and an existing MIG named 'f1-ollama-mig'."
+gpu-up: ## Warm the Ollama GPU MIG to 1 for a demo (requires PROJECT_ID, REGION)
+	@echo "==> Warming Ollama GPU MIG (PROJECT_ID=$(PROJECT_ID) REGION=$(REGION))..."
+	# An autoscaled regional MIG rejects manual resize, and CPU-autoscaling can't
+	# scale up *from zero* with no running instance to read a metric from — so
+	# warming is an explicit op: turn the autoscaler off, then resize to 1.
+	gcloud compute instance-groups managed update-autoscaling f1-ollama-mig \
+		--project=$(PROJECT_ID) --region=$(REGION) --mode=off
 	gcloud compute instance-groups managed resize f1-ollama-mig \
 		--project=$(PROJECT_ID) --region=$(REGION) --size=1
+	@echo "==> Booting. First boot pulls the Qwen models (~3-4 min). Watch: make gpu-status"
 
-gpu-down: ## Scale the Ollama GPU MIG instance group down to zero (saves cost)
-	@echo "==> Scaling Ollama GPU instance group down (PROJECT_ID=$(PROJECT_ID) REGION=$(REGION))..."
-	@echo "Requires env: PROJECT_ID, REGION, and an existing MIG named 'f1-ollama-mig'."
+gpu-down: ## Scale the Ollama GPU MIG down to zero (saves cost)
+	@echo "==> Scaling Ollama GPU MIG to zero (PROJECT_ID=$(PROJECT_ID) REGION=$(REGION))..."
 	gcloud compute instance-groups managed resize f1-ollama-mig \
 		--project=$(PROJECT_ID) --region=$(REGION) --size=0
+
+gpu-status: ## Show the Ollama GPU MIG instance state + health (requires PROJECT_ID, REGION)
+	@gcloud compute instance-groups managed list-instances f1-ollama-mig \
+		--project=$(PROJECT_ID) --region=$(REGION) \
+		--format='table(instance.basename(),instanceStatus,currentAction)'
 
 destroy: ## Destroy all Terraform-managed GCP resources
 	@echo "==> Destroying Terraform-managed resources (PROJECT_ID=$(PROJECT_ID) REGION=$(REGION))..."
