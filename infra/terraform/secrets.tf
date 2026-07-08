@@ -32,13 +32,15 @@ locals {
     n8n_jwt_secret     = random_password.n8n_jwt_secret.result
   }
 
-  # Placeholders only — Terraform creates the secret + an empty version so
-  # the resource (and IAM binding) exists, but the real value is populated
-  # out-of-band (e.g. `gcloud secrets versions add`) before enabling
-  # KALSHI_MODE=live. Terraform never overwrites a manually-added version.
+  # Placeholders only — Terraform creates the secret + a sentinel version so
+  # the resource (and IAM binding / Cloud Run secret ref) exists, but the real
+  # value is populated out-of-band (e.g. `gcloud secrets versions add`) before
+  # enabling KALSHI_MODE=live. Terraform never overwrites a manually-added
+  # version (see ignore_changes below). GCP rejects empty secret payloads, so
+  # a non-empty sentinel is used.
   placeholder_secrets = {
-    kalshi_api_key_id  = ""
-    kalshi_private_key = ""
+    kalshi_api_key_id  = "REPLACE_ME"
+    kalshi_private_key = "REPLACE_ME"
   }
 
   all_secrets = merge(local.managed_secrets, local.placeholder_secrets)
