@@ -4,6 +4,7 @@
     { "path": "packages/contracts" },
     { "path": "packages/kalshi" },
     { "path": "packages/f1model" },
-    { "path": "packages/core" }
+    { "path": "packages/core" },
+    { "path": "packages/app" }
   ]
 }
