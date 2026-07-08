@@ -1,0 +1,368 @@
+{
+  "name": "Decision Framework (reusable)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Decision Framework (reusable)\nDomain-agnostic core: any caller passes `{ domain, subject, evidence[] }` and gets back a governed decision object (`judge_overall`, `judge_verdict`, `policy_approved`, `policy_violations`). Called from `10-f1-edge-flagship.json` via **Execute Sub-workflow**, once per Kalshi market.",
+        "height": 140,
+        "width": 1420
+      },
+      "id": "73b478e6-6bc4-4eb0-9842-0175445e4e7b",
+      "name": "Sticky: Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -460
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### ① Agent reasoning (LLM)\nThe **AI Agent: Analyst** reads the evidence bundle and produces a structured `{ probability, reasoning, keyFactors }` JSON assessment via a local Ollama model (mirrors `packages/core/src/agent.ts`).",
+        "height": 600,
+        "width": 480
+      },
+      "id": "2ac80645-0e18-435e-b44e-93a106ba3283",
+      "name": "① Agent reasoning",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -280
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### ② LLM-as-judge (rubric)\nA second, independent **AI Agent: Judge** scores the analyst's assessment 0-1 against a weighted rubric (accuracy / evidence_use / calibration / clarity) using its own Ollama model (mirrors `packages/core/src/judge.ts`). No shared context with the analyst beyond its output.",
+        "height": 600,
+        "width": 460
+      },
+      "id": "28b08f5c-6c86-43a1-82dd-5e1d3d9dba49",
+      "name": "② LLM-as-judge",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        460,
+        -280
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### ③ Guardrail + policy gate\nThe **Code** node computes the rubric's weighted overall score + pass/revise/reject verdict, then applies policy guardrails (`minConfidence`, banned subjects) mirroring `packages/core/src/guardrail.ts:checkDecisionPolicy`. The **If** node branches on the result.",
+        "height": 600,
+        "width": 500
+      },
+      "id": "1a78be01-03c1-42e8-980d-b2307f5e8fa7",
+      "name": "③ Guardrail + governance",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        940,
+        -280
+      ]
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "domain"
+            },
+            {
+              "name": "subject"
+            },
+            {
+              "name": "evidence"
+            }
+          ]
+        }
+      },
+      "id": "41664519-a1bf-4e72-bb96-4691132449e6",
+      "name": "Sub-workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Domain: {{ $json.domain }}\nSubject: {{ $json.subject }}\n\nEvidence gathered for this run:\n{{ JSON.stringify($json.evidence) }}\n\nBased solely on the evidence above, estimate the probability that the outcome described by the subject occurs.",
+        "options": {
+          "systemMessage": "You are a careful analyst producing a probability assessment for a decision-support system. Respond with ONLY a single JSON object of the form {\"probability\": number between 0 and 1, \"reasoning\": string, \"keyFactors\": string[]}. Do not include any text outside the JSON object."
+        }
+      },
+      "id": "14df3847-75e5-47ce-b7ec-5bcfe7338bc2",
+      "name": "AI Agent: Analyst",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "model": "qwen2.5:14b-instruct",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "id": "fd1c5abd-0dfb-401d-98da-816a3f3ba254",
+      "name": "Ollama Chat Model (Analyst)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        220,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Subject: {{ $json.subject }}\nAnalyst's raw assessment (JSON text):\n{{ $json.output }}\n\nScore the analyst's assessment against the rubric criteria: accuracy (weight 0.4), evidence_use (weight 0.3), calibration (weight 0.2), clarity (weight 0.1).",
+        "options": {
+          "systemMessage": "You are an impartial judge scoring an AI analyst's assessment against a rubric. Respond with ONLY a single JSON object of the form {\"accuracy\": <0-1>, \"evidence_use\": <0-1>, \"calibration\": <0-1>, \"clarity\": <0-1>, \"critique\": <string>}. Do not include any text outside the JSON object."
+        }
+      },
+      "id": "0ff71a3d-0efa-487c-aa46-d9a8023ea628",
+      "name": "AI Agent: Judge (rubric)",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        460,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "model": "qwen2.5:14b-instruct",
+        "options": {
+          "temperature": 0
+        }
+      },
+      "id": "a37693d2-5099-46dd-9e73-127698b7259b",
+      "name": "Ollama Chat Model (Judge)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        460,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------------------------------------------------------------------------\n// Guardrail + Policy Gate\n// Mirrors packages/core/src/judge.ts (weighted rubric -> verdict) and\n// packages/core/src/guardrail.ts:checkDecisionPolicy (post-assessment gate).\n// Self-contained: no external requires, pure JS over $json.\n// ---------------------------------------------------------------------------\n\n/** Pulls the first balanced {...} JSON object out of a free-text LLM reply. */\nfunction extractFirstJsonObject(text) {\n  const s = String(text ?? '');\n  const start = s.indexOf('{');\n  if (start === -1) throw new Error('Guardrail: no JSON object found in judge output');\n  let depth = 0;\n  for (let i = start; i < s.length; i++) {\n    if (s[i] === '{') depth++;\n    if (s[i] === '}') depth--;\n    if (depth === 0) return JSON.parse(s.slice(start, i + 1));\n  }\n  throw new Error('Guardrail: unterminated JSON object in judge output');\n}\n\nfunction clamp(n, lo, hi) {\n  const num = Number(n);\n  return Math.min(hi, Math.max(lo, Number.isFinite(num) ? num : lo));\n}\n\n// Rubric mirrors the default judge rubric shape used by packages/core/src/judge.ts.\nconst RUBRIC = {\n  criteria: [\n    { id: 'accuracy', weight: 0.4 },\n    { id: 'evidence_use', weight: 0.3 },\n    { id: 'calibration', weight: 0.2 },\n    { id: 'clarity', weight: 0.1 },\n  ],\n  passThreshold: 0.7,\n  reviseThreshold: 0.5,\n};\n\n// Policy defaults mirror .env.example (POLICY_MIN_CONFIDENCE / bannedMarkets).\nconst POLICY = {\n  minConfidence: 0.55,\n  bannedMarkets: [],\n};\n\nconst judgeText = $json.output ?? $json.text ?? '{}';\nconst judgeRaw = extractFirstJsonObject(judgeText);\n\nconst criteria = {};\nlet overall = 0;\nfor (const c of RUBRIC.criteria) {\n  const v = clamp(judgeRaw[c.id], 0, 1);\n  criteria[c.id] = v;\n  overall += v * c.weight;\n}\n\nconst verdict =\n  overall >= RUBRIC.passThreshold ? 'pass' : overall >= RUBRIC.reviseThreshold ? 'revise' : 'reject';\n\n// The analyst's own assessed probability doubles as \"confidence\" for the\n// policy gate (mirrors AgentAssessment.probability in checkDecisionPolicy).\nlet assessmentProbability = 0;\ntry {\n  const analystJson = extractFirstJsonObject($('AI Agent: Analyst').first().json.output ?? '{}');\n  assessmentProbability = clamp(analystJson.probability, 0, 1);\n} catch (err) {\n  assessmentProbability = 0;\n}\n\nconst subject = $json.subject ?? 'unknown-subject';\n\nconst violations = [];\nif (assessmentProbability < POLICY.minConfidence) {\n  violations.push(\n    `assessment confidence ${assessmentProbability} is below minConfidence ${POLICY.minConfidence}`,\n  );\n}\nif (POLICY.bannedMarkets.includes(subject)) {\n  violations.push(`subject \"${subject}\" is on the banned markets list`);\n}\nif (verdict === 'reject') {\n  violations.push(`judge verdict is \"reject\" (overall ${overall.toFixed(3)})`);\n}\n\nconst approved = violations.length === 0;\n\nreturn [\n  {\n    json: {\n      subject,\n      assessment_probability: assessmentProbability,\n      judge_overall: overall,\n      judge_criteria: criteria,\n      judge_verdict: verdict,\n      judge_critique: judgeRaw.critique ?? '',\n      policy_approved: approved,\n      policy_violations: violations,\n    },\n  },\n];\n"
+      },
+      "id": "fbbcf816-5e2e-438c-a6f8-a8f09951939c",
+      "name": "Code: Guardrail + Policy Gate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-approved",
+              "leftValue": "={{ $json.policy_approved }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "fe76e7d0-e4c2-4e22-bad9-0c2c25c85022",
+      "name": "If: Approved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        940,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "subject",
+              "type": "string",
+              "value": "={{ $json.subject }}"
+            },
+            {
+              "id": "a2",
+              "name": "judge_overall",
+              "type": "number",
+              "value": "={{ $json.judge_overall }}"
+            },
+            {
+              "id": "a3",
+              "name": "judge_verdict",
+              "type": "string",
+              "value": "={{ $json.judge_verdict }}"
+            },
+            {
+              "id": "a4",
+              "name": "policy_approved",
+              "type": "boolean",
+              "value": "={{ true }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f67870c4-8e65-4a63-8861-ee351aa2cd84",
+      "name": "Decision: Approved",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1180,
+        -140
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "r1",
+              "name": "subject",
+              "type": "string",
+              "value": "={{ $json.subject }}"
+            },
+            {
+              "id": "r2",
+              "name": "policy_violations",
+              "type": "array",
+              "value": "={{ $json.policy_violations }}"
+            },
+            {
+              "id": "r3",
+              "name": "policy_approved",
+              "type": "boolean",
+              "value": "={{ false }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ce231729-cb35-4753-9d11-e7d66f017c8a",
+      "name": "Decision: Rejected",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1180,
+        140
+      ]
+    }
+  ],
+  "connections": {
+    "Sub-workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "AI Agent: Analyst",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model (Analyst)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent: Analyst",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent: Analyst": {
+      "main": [
+        [
+          {
+            "node": "AI Agent: Judge (rubric)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model (Judge)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent: Judge (rubric)",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent: Judge (rubric)": {
+      "main": [
+        [
+          {
+            "node": "Code: Guardrail + Policy Gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Guardrail + Policy Gate": {
+      "main": [
+        [
+          {
+            "node": "If: Approved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If: Approved?": {
+      "main": [
+        [
+          {
+            "node": "Decision: Approved",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Decision: Rejected",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

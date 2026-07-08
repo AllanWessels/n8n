@@ -1,0 +1,199 @@
+{
+  "name": "GPU Warm-up Ping",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## GPU Warm-up Ping\nCold-start mitigation: pings the local Ollama server's `/api/tags` before the flagship pipeline needs it, so the first real inference in `10-f1-edge-flagship.json` doesn't pay a multi-minute model-load penalty. Polls until the target model is loaded, then reports warm.",
+        "height": 560,
+        "width": 1080
+      },
+      "id": "e820422e-eac1-4943-a2b2-2355c0f10483",
+      "name": "Sticky: GPU warm-up",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "e0d4f25b-b9da-48ce-806e-2eca7fee0037",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "f61b1d97-b042-4823-85d8-c623a41acd3f",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.OLLAMA_BASE_URL || \"http://ollama:11434\" }}/api/tags",
+        "method": "GET",
+        "options": {
+          "retry": {
+            "retry": true,
+            "maxRetries": 3
+          }
+        }
+      },
+      "id": "a999afde-2655-490b-b664-5017cd519a23",
+      "name": "HTTP: Ollama /api/tags",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        -20
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-ready",
+              "leftValue": "={{ ($json.models || []).some(m => (m.name || m.model || '').startsWith('qwen2.5:14b-instruct')) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a8472be5-627c-43ce-afea-acca1c8f8130",
+      "name": "If: model ready?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        480,
+        -20
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 10,
+        "unit": "seconds"
+      },
+      "id": "457f92ed-44b7-4aa1-adfc-266ecc7f034d",
+      "name": "Wait: loop wait",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        480,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------------------------------------------------------------------------\n// Report that the target Ollama model is warm and ready to serve the\n// flagship pipeline's AI Agent / judge calls.\n// ---------------------------------------------------------------------------\nconst targetModel = 'qwen2.5:14b-instruct';\n\nreturn [\n  {\n    json: {\n      warm: true,\n      model: targetModel,\n      checkedAt: new Date().toISOString(),\n    },\n  },\n];\n"
+      },
+      "id": "e86f89c1-8979-4cd0-a12a-6d3bb1979c21",
+      "name": "Code: report warm",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        -140
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Ollama /api/tags",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Ollama /api/tags",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: Ollama /api/tags": {
+      "main": [
+        [
+          {
+            "node": "If: model ready?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If: model ready?": {
+      "main": [
+        [
+          {
+            "node": "Code: report warm",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait: loop wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait: loop wait": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Ollama /api/tags",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}
