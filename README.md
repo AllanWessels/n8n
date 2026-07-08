@@ -191,9 +191,11 @@ make e2e                      # prints the SUBJECT / MODEL / MARKET / SIGNAL / A
 
 ```bash
 # 1. sync the version-controlled workflows into the live n8n over its API (idempotent).
-#    CD does this automatically on push; run it by hand the first time:
+#    Manual run — authenticate with your n8n owner login:
 N8N_BASE="$(terraform -chdir=infra/terraform output -raw n8n_url)" \
-  N8N_API_KEY=<n8n api key> make import-workflows-remote
+  N8N_EMAIL=you@example.com N8N_PASSWORD='<your n8n password>' make import-workflows-remote
+#    (CD does this automatically on push using an n8n API key from Secret Manager
+#     instead of a password — see cd.yml; you don't need a key for a manual run.)
 # 2. warm the GPU inference tier (spot L4; first run pulls the model, ~3-4 min)
 make gpu-up   PROJECT_ID=f1-decision-platform REGION=us-central1
 # 3. open the live n8n, open the flagship workflow, and click Execute
