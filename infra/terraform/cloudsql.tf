@@ -18,7 +18,10 @@ resource "google_sql_database_instance" "main" {
   ]
 
   settings {
-    tier              = var.db_tier
+    tier = var.db_tier
+    # ENTERPRISE edition supports cost-minimal shared-core tiers (db-f1-micro);
+    # the newer ENTERPRISE_PLUS default rejects them.
+    edition           = "ENTERPRISE"
     availability_type = "ZONAL"
     disk_autoresize   = true
     disk_size         = 10
