@@ -1,0 +1,132 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --blue:#3b82f6; --blue2:#2563eb; --teal:#14b8a6; --amber:#f59e0b;
+    --purple:#a78bfa; --green:#22c55e; --slate:#64748b;
+    --ink:#e6edf3; --sub:#93a4b8; --panel:#111a2b; --panelb:#1f2b40;
+  }
+  html,body { background:#0a0f1a; }
+  #fig {
+    width:1480px; padding:44px 48px 40px;
+    background:
+      radial-gradient(1200px 500px at 20% -10%, rgba(59,130,246,.14), transparent 60%),
+      radial-gradient(1000px 500px at 95% 5%, rgba(167,139,250,.12), transparent 55%),
+      linear-gradient(180deg,#0b1220 0%, #0a0f1a 100%);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);
+  }
+  .head { display:flex; align-items:baseline; gap:14px; margin-bottom:6px; }
+  .head h1 { font-size:26px; font-weight:700; letter-spacing:-.01em; }
+  .head .tag { font-size:13px; color:var(--sub); font-weight:500; }
+  .sub { color:var(--sub); font-size:14px; margin-bottom:26px; }
+
+  .row { display:flex; align-items:stretch; gap:16px; }
+  .center { justify-content:center; }
+  .arrow-down { display:flex; flex-direction:column; align-items:center; color:var(--slate); margin:10px 0; }
+  .arrow-down .lbl { font-size:12px; color:var(--sub); margin-bottom:3px; letter-spacing:.02em; }
+  .arrow-down .line { width:2px; height:16px; background:linear-gradient(#334, #56607a); }
+  .arrow-down .tip { width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid #56607a; }
+
+  /* node card */
+  .node {
+    position:relative; background:var(--panel); border:1px solid var(--panelb);
+    border-radius:12px; padding:13px 15px 13px 16px; min-width:150px;
+    box-shadow:0 1px 0 rgba(255,255,255,.03) inset, 0 6px 18px rgba(0,0,0,.35);
+    overflow:hidden;
+  }
+  .node::before { content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--ac,var(--slate)); }
+  .node .ico { font-size:17px; line-height:1; }
+  .node .t { display:flex; align-items:center; gap:8px; font-weight:650; font-size:14.5px; }
+  .node .s { color:var(--sub); font-size:11.5px; margin-top:4px; line-height:1.35; }
+  .b { --ac:var(--blue); } .tl { --ac:var(--teal); } .am { --ac:var(--amber); }
+  .pu { --ac:var(--purple); } .gr { --ac:var(--green); } .sl { --ac:var(--slate); }
+  .hero { border-color:#2b4a7e; background:linear-gradient(180deg,#12233f,#0f1b30); }
+  .toggle { border-style:dashed; opacity:.9; }
+  .pill { display:inline-block; font-size:10.5px; font-weight:600; padding:1px 7px; border-radius:99px;
+          background:rgba(148,164,184,.14); color:var(--sub); margin-left:6px; vertical-align:middle; }
+
+  /* group panel */
+  .panel { border:1px solid var(--panelb); border-radius:18px; padding:18px 18px 20px;
+           background:linear-gradient(180deg, rgba(30,43,64,.35), rgba(17,26,43,.25)); }
+  .panel.gcp { border-color:#26406b; box-shadow:0 0 0 1px rgba(59,130,246,.08), 0 10px 40px rgba(0,0,0,.35); }
+  .plabel { display:flex; align-items:center; gap:9px; font-size:13.5px; font-weight:700; color:var(--ink);
+            margin-bottom:14px; letter-spacing:.01em; }
+  .plabel .dot { width:9px;height:9px;border-radius:3px; }
+  .band { font-size:11px; text-transform:uppercase; letter-spacing:.09em; color:var(--sub); margin:4px 2px 9px; font-weight:700; }
+  .grid { display:flex; gap:14px; flex-wrap:wrap; }
+  .grid > .node { flex:1 1 0; }
+  .conn { display:flex; align-items:center; color:var(--slate); font-size:20px; padding:0 2px; }
+  .ext .plabel { color:var(--green); }
+  .legend { display:flex; gap:18px; flex-wrap:wrap; margin-top:22px; font-size:12px; color:var(--sub); }
+  .legend span { display:inline-flex; align-items:center; gap:6px; }
+  .legend i { width:11px;height:11px;border-radius:3px; display:inline-block; }
+</style>
+</head>
+<body>
+<div id="fig">
+  <div class="head"><h1>Platform architecture</h1><span class="tag">decision-orchestration-platform · GCP</span></div>
+  <div class="sub">Push-to-prod is keyless; n8n orchestrates every decision; the LLM and workers scale out under load and back to zero when idle.</div>
+
+  <!-- CI/CD lane -->
+  <div class="row center">
+    <div class="node sl"><div class="t"><span class="ico">👤</span>Developer</div><div class="s">git push</div></div>
+    <div class="conn">→</div>
+    <div class="node sl"><div class="t"><span class="ico">⚙️</span>GitHub Actions</div><div class="s">ci.yml · cd.yml — test, coverage gate,<br/>AI review, terraform plan → deploy</div></div>
+  </div>
+  <div class="arrow-down"><span class="lbl">deploys via Workload Identity Federation · no JSON keys</span><span class="line"></span><span class="tip"></span></div>
+
+  <!-- GCP panel -->
+  <div class="panel gcp">
+    <div class="plabel"><span class="dot" style="background:var(--blue)"></span>☁️ Google Cloud Platform<span class="pill">project: decision-orchestration-platform</span></div>
+
+    <div class="band">Build &amp; serve</div>
+    <div class="grid" style="margin-bottom:16px">
+      <div class="node b" style="max-width:210px"><div class="t"><span class="ico">📦</span>Artifact Registry</div><div class="s">built n8n container image</div></div>
+      <div class="conn">→</div>
+      <div class="node b hero"><div class="t"><span class="ico">▲</span>Cloud Run — n8n<span class="pill">the orchestrator</span></div><div class="s">scale-to-zero · min 0 → max 4 · concurrency autoscale · JWT/OAuth webhooks + public REST API</div></div>
+      <div class="conn">⇢</div>
+      <div class="node b toggle" style="max-width:210px"><div class="t"><span class="ico">🧵</span>Cloud Run — n8n-worker</div><div class="s">queue mode · horizontal scale-out <b>(toggle)</b></div></div>
+    </div>
+
+    <div class="band">State &amp; AI inference</div>
+    <div class="grid" style="margin-bottom:16px">
+      <div class="node tl"><div class="t"><span class="ico">🗄️</span>Cloud SQL — Postgres</div><div class="s">n8n state + <code>decision_ledger</code> audit store</div></div>
+      <div class="node tl toggle"><div class="t"><span class="ico">⚡</span>Memorystore Redis</div><div class="s">Bull/BullMQ queue backend <b>(toggle)</b></div></div>
+      <div class="node am"><div class="t"><span class="ico">🖥️</span>Ollama GPU MIG</div><div class="s">local Qwen · spot L4 · autoscale 0 → 2</div></div>
+    </div>
+
+    <div class="band">Governance · eventing · observability</div>
+    <div class="grid">
+      <div class="node pu"><div class="t"><span class="ico">🔐</span>Secret Manager</div><div class="s">DB pw · JWT secret · signal-source keys</div></div>
+      <div class="node pu"><div class="t"><span class="ico">📣</span>Pub/Sub</div><div class="s">decisions topic + dead-letter</div></div>
+      <div class="node pu"><div class="t"><span class="ico">📊</span>Cloud Monitoring</div><div class="s">dashboard · log metric · 5xx alert</div></div>
+      <div class="node pu"><div class="t"><span class="ico">🛡️</span>Identity Federation</div><div class="s">keyless GitHub → GCP OIDC</div></div>
+    </div>
+  </div>
+
+  <div class="arrow-down"><span class="lbl">outbound only · read-only · keyless public endpoints</span><span class="line"></span><span class="tip"></span></div>
+
+  <!-- external -->
+  <div class="panel ext">
+    <div class="plabel"><span class="dot" style="background:var(--green)"></span>🌐 External signal sources</div>
+    <div class="grid">
+      <div class="node gr"><div class="t"><span class="ico">📈</span>Market-signal API</div><div class="s">prediction-market implied probabilities (read-only)</div></div>
+      <div class="node gr"><div class="t"><span class="ico">🏁</span>Championship · weather · news</div><div class="s">standings API · 2× weather APIs · RSS news feed</div></div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span><i style="background:var(--blue)"></i>compute / serving</span>
+    <span><i style="background:var(--teal)"></i>state &amp; queue</span>
+    <span><i style="background:var(--amber)"></i>AI inference</span>
+    <span><i style="background:var(--purple)"></i>governance &amp; ops</span>
+    <span><i style="background:var(--green)"></i>external signals</span>
+    <span><i style="background:var(--slate);border:1px dashed #56607a"></i>dashed = optional (queue-mode toggle)</span>
+  </div>
+</div>
+</body>
+</html>

@@ -27,6 +27,8 @@
     "@typescript-eslint/parser": "^8.18.0",
     "@vitest/coverage-v8": "^2.1.8",
     "eslint": "^8.57.1",
+    "marked": "^18.0.5",
+    "playwright-core": "^1.61.1",
     "prettier": "^3.4.2",
     "rimraf": "^6.0.1",
     "typescript": "^5.7.2",

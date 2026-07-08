@@ -20,27 +20,27 @@ The **evidence sources and the F1/prediction-market domain in this build are a r
 
 ## Attribute → implementation matrix
 
-| # | Attribute | Implementation (real paths) |
+| # | Attribute | How the platform delivers it — with the artifacts that prove it |
 |---|---|---|
-| 2.1 | **Scalable** | Cloud Run `min_instance_count=0` scale-to-zero (`infra/terraform/cloudrun_n8n.tf`); Ollama GPU MIG autoscale 0→2 (`infra/terraform/ollama_gpu.tf`); toggleable queue-mode Redis + `n8n worker` service for horizontal scaling (`infra/terraform/queue_mode.tf`, `enable_queue_mode`) |
-| 2.2 | **Secure integration — OAuth/JWT + webhooks** | n8n JWT-authenticated `Webhook (JWT)` trigger in the flagship workflow (`workflows/10-f1-edge-flagship.json`); secrets in Secret Manager (`infra/terraform/secrets.tf`); keyless CI/CD via Workload Identity Federation (`infra/terraform/wif.tf`); RSA-PSS-signed requests to the external market-signal API (`packages/kalshi/src/signer.ts`) |
-| 2.3 | **Resilient** | `options.retry` (3 retries) on every ingest `HTTP Request` node in the flagship workflow; n8n's own execution error handling; Postgres persistence of every run/evidence/decision (`db/schema.sql`); Cloud Run + MIG auto-heal via health/liveness probes; Pub/Sub dead-letter topic + subscription (`infra/terraform/pubsub.tf`) |
-| 2.4 | **AI-enabled** | n8n `AI Agent` + `lmChatOllama` nodes calling a local LLM (`workflows/00-decision-framework.json`); TypeScript mirror in `packages/core/src/agent.ts` + `judge.ts`; local by default, one config value from a hosted frontier model via the same OpenAI-compatible interface |
-| 2.5 | **Multi-function decisioning framework** | `packages/core` (agent/judge/guardrail/decision, domain-agnostic) + `workflows/00-decision-framework.json` (the reusable sub-workflow, zero domain-specific logic) — see [Introduction](#decision-orchestration-platform) for example domains beyond the F1 reference build |
-| 2.6 | **API-first / REST** | n8n's own REST/public API surface; the flagship workflow's `Respond to Webhook` node returns the decision as JSON to any caller |
-| 2.7 | **Event-driven** | 3 trigger types on the flagship workflow (`Webhook`, `Schedule Trigger`, `Manual Trigger`); `90-warmup-ping.json` on a 15-minute schedule; Pub/Sub `decisions` topic (`infra/terraform/pubsub.tf`) |
-| 2.8 | **Connects enterprise systems, automation platforms, and AI services** | External market-signal API, championship-data API, weather APIs, news RSS, Ollama, Postgres, Pub/Sub — 8 distinct systems wired together in one workflow graph, each behind a typed adapter (see [Data sources](#data-sources)) |
-| 2.9.1 | **Development standard** | TDD with an enforced 80%-lines/80%-functions/75%-branches/80%-statements coverage gate (`vitest.config.ts`, `.github/workflows/ci.yml`); Ollama-Qwen adversarial CI code reviewer (`scripts/ci/ai-review.mjs`); workflow JSON validated against n8n's own node schemas by importing into a live n8n instance, and compatible with the **n8n-mcp** toolchain (programmatic node discovery / workflow-JSON validation) and **n8n-skills** for AI-assisted authoring |
-| 2.9.2 / 2.9.6 | **Deployment / environment strategy** | Terraform → GCP (`infra/terraform/`), GitHub Actions CD gated behind `ENABLE_CD` repo variable + WIF (`.github/workflows/cd.yml`); `.env.example` documents every runtime var; `enable_gpu`/`enable_queue_mode`/`n8n_public` toggles for cost/topology tradeoffs (`infra/terraform/variables.tf`) |
-| 2.9.3 / 2.9.8 | **Monitoring / observability** | Cloud Monitoring dashboard (`infra/terraform/dashboards/n8n-overview.json`, wired via `infra/terraform/monitoring.tf`), a log-based metric on `decision_logged` events, and a 5xx-error-rate alert policy |
-| 2.9.4 | **Reliability** | Cloud SQL Postgres (`infra/terraform/cloudsql.tf`) as the durable store for both n8n's own state and the decision ledger; `decision_runs`/`evidence_snapshots`/`decision_ledger` tables persist full provenance for replay (`db/schema.sql`) |
-| 2.9.5 | **Governance** | Guardrail + policy gate (`packages/core/src/guardrail.ts`), auditable decision ledger with `policy_violations`/`rationale`/`raw` columns (`db/schema.sql`), least-privilege IAM (`infra/terraform/iam.tf`, `wif.tf`), all secrets in Secret Manager (never in code or workflow JSON) |
-| 2.9.7 | **Reusable frameworks / templates / prompt patterns** | `workflows/00-decision-framework.json` (the callable sub-workflow) + the agent/judge prompt-building functions in `packages/core/src/agent.ts:buildPrompt` and `packages/core/src/judge.ts:buildPrompt`, parameterized entirely by evidence/rubric — no domain-specific strings |
-| 2.9.9 | **Cloud (GCP)** | Cloud Run (containers) + Docker (`docker-compose.yml` locally, upstream `n8nio/n8n` image in prod) + Ollama on a GCP GPU MIG (`infra/terraform/ollama_gpu.tf`) |
+| 2.1 | **Scalable** | **Scales *out* under load, not just to zero.** The same decision graph runs unchanged whether it evaluates 10 candidates or 10,000: queue-mode spreads work across horizontally-scaled `n8n worker` containers behind a Redis/BullMQ queue, the LLM tier autoscales as a GPU MIG (0→2 L4s), and Cloud Run adds instances on concurrency — then all three fall back to zero when idle to control cost. (`infra/terraform/{queue_mode,ollama_gpu,cloudrun_n8n}.tf`, gated by `enable_queue_mode` / `enable_gpu`.) |
+| 2.2 | **Secure integration — OAuth/JWT + webhooks** | **Every entry point is authenticated and every secret is externalized.** The inbound webhook is JWT-verified, machine-to-machine calls to the market-signal API are RSA-PSS-signed, CI reaches GCP with no long-lived keys via Workload Identity Federation, and no credential ever lives in code or workflow JSON. (`workflows/10-f1-edge-flagship.json` · `packages/kalshi/src/signer.ts` · `infra/terraform/{wif,secrets}.tf`.) |
+| 2.3 | **Resilient** | **A transient failure never loses a decision.** Every external call retries with backoff, n8n catches node-level errors, Pub/Sub dead-letters what can't be processed, and Cloud Run + the GPU MIG self-heal on liveness probes — while Postgres durably records every run so any decision can be replayed. (retry options in `workflows/*` · `infra/terraform/pubsub.tf` · `db/schema.sql`.) |
+| 2.4 | **AI-enabled** | **Reasoning is a first-class, swappable step.** A local LLM agent turns raw evidence into a structured, defensible assessment, and an independent LLM-as-judge scores that reasoning before it can move a decision — all over an OpenAI-compatible interface, so trading the local model for a hosted frontier model is one config value, not a rewrite. (`workflows/00-decision-framework.json` · `packages/core/src/{agent,judge}.ts`.) |
+| 2.5 | **Multi-function decisioning framework** | **One decision engine, any domain.** The core ingest → agent → judge → guardrail → record pipeline carries zero F1-specific logic; the F1 build is just one caller. Point it at fraud signals, credit files, or claims triage and the same governance applies. (`packages/core` · `workflows/00-decision-framework.json` — see [Introduction](#decision-orchestration-platform).) |
+| 2.6 | **API-first / REST** | **Everything is reachable over REST.** n8n exposes its own public REST API, and the flagship returns each governed decision as JSON to any caller through a Respond-to-Webhook node — so an existing system can request a decision and consume the result without touching the internals. (`workflows/10-f1-edge-flagship.json`.) |
+| 2.7 | **Event-driven** | **Decisions fire on events, not manual runs.** The pipeline triggers from an inbound webhook, a schedule, or an API/manual call; warm-up runs on a timer; and every decision is published to a Pub/Sub topic other systems can subscribe to. (three triggers in `workflows/*` · `infra/terraform/pubsub.tf`.) |
+| 2.8 | **Connects enterprise systems, automation platforms, and AI services** | **Eight heterogeneous systems, one graph.** A market-signal API, championship data, two weather services, a news feed, the local LLM runtime, Postgres, and Pub/Sub are wired together in a single workflow — each behind a typed adapter, so a source can be swapped without touching the pipeline. (see [Data sources](#data-sources).) |
+| 2.9.1 | **Development standard** | **Quality is enforced by machines, not good intentions.** TDD with a hard coverage gate blocks undertested merges, and a *second* AI — a local Qwen adversarial reviewer — critiques every PR's diff in CI; workflow JSON is validated against n8n's own node schemas. Compatible with the **n8n-mcp** toolchain and **n8n-skills** for AI-assisted authoring. (`vitest.config.ts` · `scripts/ci/ai-review.mjs` · `.github/workflows/ci.yml`.) |
+| 2.9.2 / 2.9.6 | **Deployment / environment strategy** | **Ship the whole platform from a clean checkout, repeatably.** Infrastructure is declarative Terraform, releases deploy through GitHub Actions over keyless WIF, and cost/topology are dialed per environment with documented toggles (`enable_gpu`, `enable_queue_mode`, `n8n_public`). (`infra/terraform/` · `.github/workflows/cd.yml`.) |
+| 2.9.3 / 2.9.8 | **Monitoring / observability** | **You can see what every decision cost and whether the system is healthy.** A Cloud Monitoring dashboard, a log-based metric on decision events, and a 5xx alert policy all ship as code alongside the app. (`infra/terraform/monitoring.tf` + `dashboards/n8n-overview.json`.) |
+| 2.9.4 | **Reliability** | **State survives restarts and is auditable after the fact.** Cloud SQL Postgres durably holds both n8n's own state and the decision ledger, with full provenance (`decision_runs` / `evidence_snapshots` / `decision_ledger`) so any run can be reconstructed. (`infra/terraform/cloudsql.tf` · `db/schema.sql`.) |
+| 2.9.5 | **Governance** | **No decision escapes policy or the audit trail.** A deterministic guardrail/policy gate runs independently of the AI, every decision is written to an immutable ledger with its rationale and any policy violations, and access is least-privilege IAM with all secrets externalized. (`packages/core/src/guardrail.ts` · `db/schema.sql` · `infra/terraform/{iam,wif}.tf`.) |
+| 2.9.7 | **Reusable frameworks / templates / prompt patterns** | **The reusable parts are packaged for reuse.** The domain-agnostic sub-workflow, the parameterized agent/judge prompt builders, and the typed contracts are all callable building blocks with no domain strings baked in. (`workflows/00-decision-framework.json` · `packages/core/src/{agent,judge}.ts:buildPrompt`.) |
+| 2.9.9 | **Cloud (GCP)** | **Cloud-native and containerized end to end.** n8n runs as a container on Cloud Run, the LLM tier on a GCP GPU MIG, and the *identical* stack runs locally via Docker Compose — no "works on my machine" gap between demo and production. (`docker-compose.yml` · `infra/terraform/{cloudrun_n8n,ollama_gpu}.tf`.) |
 
 ## The n8n workflow graph
 
-The workflow graph *is* the platform's logic surface — triggers, HTTP calls, the AI agent, the judge, and the database write all run as nodes on a canvas that a non-engineer can open, read, and reason about. The screenshots below are the real, importable workflows in `workflows/` (`make import-workflows` loads them into a running n8n instance).
+The workflow graph *is* the platform's logic surface — triggers, HTTP calls, the AI agent, the judge, and the database write all run as nodes on a canvas that a non-engineer can open, read, and reason about. The images below are **screenshots of n8n's own canvas** — the actual workflow JSON in `workflows/` imported into a running n8n instance and rendered by n8n itself (`make import-workflows`), not a mock-up: standard n8n nodes with their real icons, connectors, and sticky-note annotations.
 
 ![Flagship decision workflow](docs/img/n8n-flagship.png)
 
@@ -48,21 +48,21 @@ The workflow graph *is* the platform's logic surface — triggers, HTTP calls, t
 
 ![Reusable decision framework](docs/img/n8n-framework.png)
 
-Mermaid source for both graphs lives in `docs/img/*.mmd`, generated straight from the workflow JSON by `scripts/export-graph.mjs`; `make graph` regenerates them. A third workflow, `workflows/90-warmup-ping.json` (6 nodes), polls Ollama and pre-warms the model on a schedule so the first Agent/Judge call of a session doesn't eat a multi-minute cold-load penalty — see `workflows/README.md` for the full annotated walkthrough of every node.
+Both images are regenerated by `scripts/render-n8n-live.mjs` (`make graph`), which imports each workflow into a real n8n instance and screenshots the canvas — so the diagram can never drift from the JSON that actually runs. A third workflow, `workflows/90-warmup-ping.json` (6 nodes), polls Ollama and pre-warms the model on a schedule so the first Agent/Judge call of a session doesn't eat a multi-minute cold-load penalty — see `workflows/README.md` for the full annotated walkthrough of every node.
 
 ## The decision pipeline, explained
 
 Every decision — regardless of domain — moves through the same seven stages, implemented once in `packages/core` and mirrored 1:1 as n8n nodes in `workflows/00-decision-framework.json` + `workflows/10-f1-edge-flagship.json`. The business point of this structure: **the policy thresholds, the judge's rubric, the guardrail rules, and the workflow graph itself are all data and configuration, not compiled application code.** An analyst or risk owner can open the n8n canvas, change a threshold in `.env`, or edit the rubric weights in `packages/contracts/src/rubric.ts` without a developer touching a compiler — the logic that governs a decision is owned by the business, not hidden inside a binary.
 
-| # | Stage | Business purpose | Flagship implementation | Framework implementation |
-|---|---|---|---|---|
-| 1 | **Ingest** | Pull every piece of relevant evidence from its system of record before forming an opinion | 5 parallel HTTP/RSS calls (championship data, weather x2, market-signal API, news) with retry, merged into one evidence bundle — `packages/app/src/evidence.ts:gatherEvidence` | `Evidence[]` contract, `packages/contracts/src/schemas.ts` (Zod-validated on the way in) |
-| 2 | **Enrich** | Turn raw evidence into a comparable, quantitative estimate | Softmax win-probability model + model-vs-market signal calculation — `packages/f1model/src/model.ts`, `packages/f1model/src/edge.ts` | domain-supplied `context` on `DecisionInput` |
-| 3 | **AI agent** | Produce a structured, reasoned assessment instead of an opaque score | Local Qwen produces a structured `{probability, reasoning, keyFactors}` from evidence only — `packages/core/src/agent.ts:assess` | n8n **AI Agent: Analyst** node + **Ollama Chat Model** |
-| 4 | **LLM-as-judge (responsible-AI gate)** | Independently check the AI's reasoning quality before it can influence a real decision | A second, independent local Qwen call scores the assessment 0–1 against a human-authored, weighted rubric — `packages/core/src/judge.ts:judge`, rubric in `packages/contracts/src/rubric.ts` | n8n **AI Agent: Judge (rubric)** node + its own **Ollama Chat Model** |
-| 5 | **Guardrail / policy gate** | Enforce business policy deterministically, independent of what the AI concluded | Pre-assessment fast-fail (`checkInputPolicy`) + post-assessment policy check (`checkDecisionPolicy`) — `packages/core/src/guardrail.ts` | n8n **Code: Guardrail + Policy Gate** node |
-| 6 | **Decision record** | Produce an immutable, schema-checked artifact that can be replayed or audited later | Zod-validated, immutable record assembled and schema-checked — `packages/core/src/decision.ts:buildDecisionRecord` + `DecisionRecordSchema` | n8n **If: Approved?** → **Decision: Approved/Rejected** |
-| 7 | **Action** | Turn a governed decision into a recommendation a downstream system or human can act on | Recommend act / hold / decline (`BUY`/`HOLD`/`PASS` in code) + half-Kelly sizing where applicable, written to the `decision_ledger` Postgres table and returned via the webhook response — `packages/app/src/persist.ts`, `db/schema.sql`, n8n **Postgres: insert decision_ledger** → **Respond to Webhook** | (domain-specific — the framework returns the governed decision, the caller decides what "action" means downstream) |
+| Stage | Business purpose | How it's implemented — flagship (F1) → framework (domain-agnostic) |
+|---|---|---|
+| **1 · Ingest** | Pull every piece of relevant evidence from its system of record before forming an opinion | **Flagship:** 5 parallel HTTP/RSS calls (championship data, weather ×2, market-signal API, news), retried and merged into one bundle (`packages/app/src/evidence.ts`). **Framework:** a typed, Zod-validated `Evidence[]` contract (`packages/contracts/src/schemas.ts`). |
+| **2 · Enrich** | Turn raw evidence into a comparable, quantitative estimate | **Flagship:** softmax win-probability model + model-vs-market signal (`packages/f1model/src/{model,edge}.ts`). **Framework:** domain-supplied `context` on `DecisionInput`. |
+| **3 · AI agent** | Produce a structured, reasoned assessment instead of an opaque score | **Flagship:** local Qwen emits `{probability, reasoning, keyFactors}` from evidence only (`packages/core/src/agent.ts`). **Framework:** n8n **AI Agent: Analyst** + **Ollama Chat Model**. |
+| **4 · LLM-as-judge** *(responsible-AI gate)* | Independently check the AI's reasoning quality before it can move a real decision | **Flagship:** a second, independent Qwen scores the assessment 0–1 against a human-authored weighted rubric (`packages/core/src/judge.ts`, `packages/contracts/src/rubric.ts`). **Framework:** n8n **AI Agent: Judge**. |
+| **5 · Guardrail / policy gate** | Enforce business policy deterministically, independent of what the AI concluded | **Flagship:** pre-assessment fast-fail + post-assessment policy check (`packages/core/src/guardrail.ts`). **Framework:** n8n **Code: Guardrail + Policy Gate**. |
+| **6 · Decision record** | Produce an immutable, schema-checked artifact that can be replayed or audited later | **Flagship:** Zod-validated immutable record (`packages/core/src/decision.ts` + `DecisionRecordSchema`). **Framework:** n8n **If: Approved?** → **Decision** nodes. |
+| **7 · Action** | Turn a governed decision into a recommendation a downstream system or human can act on | **Flagship:** act / hold / decline + half-Kelly sizing, written to the `decision_ledger` table and returned via the webhook (`packages/app/src/persist.ts`, `db/schema.sql`). **Framework:** returns the governed decision; the caller defines what "action" means. |
 
 `packages/core/src/decision.ts:runDecision` is the orchestrator: input-policy check → agent assess → signal computation → judge → (revise loop, up to `maxRevise`) → decision-policy check → record. The **adversarial LLM-as-judge** is worth calling out specifically: it doesn't just rubber-stamp the agent's output — it's instructed to score the agent's reasoning critically against the rubric, and a low score sends the assessment back for revision or has it rejected outright before it ever reaches the guardrail or the ledger. That's what makes it safe to run a smaller, cheaper local model as the primary agent: a bad or ungrounded assessment is caught and stopped, not silently passed through as a governed recommendation. The whole pipeline is deterministic and unit-testable via `StubLLM` (`packages/core/src/ollama.ts`) with zero network/GPU dependency — that's how 141 tests run in under a second (see [Testing & Quality Harness](#testing--quality-harness)).
 
@@ -85,66 +85,7 @@ The pipeline's code and raw CLI output use the short codes `BUY` / `HOLD` / `PAS
 
 ## Architecture
 
-```mermaid
-flowchart TD
-    subgraph dev["Developer"]
-        push["git push"]
-    end
-
-    subgraph gh["GitHub"]
-        actions["GitHub Actions<br/>ci.yml / cd.yml"]
-    end
-
-    subgraph gcp["Google Cloud Platform — decision-orchestration-platform"]
-        ar["Artifact Registry<br/>(n8n container image)"]
-        cr["Cloud Run: n8n<br/>(scale-to-zero, min=0 max=4)"]
-        crworker["Cloud Run: n8n-worker<br/>(queue mode, toggleable)"]
-        sql[("Cloud SQL: Postgres<br/>(n8n storage + decision_ledger)")]
-        redis[("Memorystore Redis<br/>(Bull queue, toggleable)")]
-        mig["Ollama GPU MIG<br/>spot L4, autoscale 0→2"]
-        sm["Secret Manager<br/>(DB pw, JWT secret, signal-source keys)"]
-        ps["Pub/Sub<br/>decisions + deadletter"]
-        mon["Cloud Logging / Monitoring<br/>+ dashboard + alert policy"]
-        wif["Workload Identity Federation<br/>(keyless GitHub OIDC deploy)"]
-    end
-
-    subgraph ext["External signal sources (keyless, read-only)"]
-        kalshi["Market-signal API"]
-        jolpica["Championship data / weather / news feeds"]
-    end
-
-    push --> actions
-    actions -- "WIF (no JSON keys)" --> wif
-    wif --> ar
-    wif --> cr
-    actions --> ar
-    ar --> cr
-    cr <--> sql
-    cr <--> mig
-    cr -.->|"enable_queue_mode"| redis
-    cr -.->|"enable_queue_mode"| crworker
-    crworker <--> sql
-    crworker <--> redis
-    cr --> ps
-    cr --> sm
-    cr --> mon
-    cr --> kalshi
-    cr --> jolpica
-
-    classDef gcpCompute fill:#4285F4,stroke:#1a56b8,color:#fff;
-    classDef storage fill:#546E7A,stroke:#37474F,color:#fff;
-    classDef ai fill:#F4B400,stroke:#b58200,color:#111;
-    classDef governance fill:#7B42BC,stroke:#54277f,color:#fff;
-    classDef signal fill:#0F9D58,stroke:#0a7040,color:#fff;
-    classDef devNode fill:#E8EAED,stroke:#9AA0A6,color:#111;
-
-    class push devNode;
-    class actions,wif,sm,mon,ps governance;
-    class ar,cr,crworker gcpCompute;
-    class sql,redis storage;
-    class mig ai;
-    class kalshi,jolpica signal;
-```
+![Platform architecture — decision-orchestration-platform on GCP](docs/img/architecture.png)
 
 Deployed live to a GCP project (`infra/terraform/`) provisioned for this platform. n8n runs on Cloud Run today; the Ollama GPU MIG is written and `terraform apply`-ready but deferred pending an L4 quota grant on the project (see `BLOCKERS.md`).
 
@@ -240,7 +181,7 @@ workflows/     importable n8n workflow JSON exports (the visual centerpiece)
 db/            decision_runs / evidence_snapshots / decision_ledger schema
 infra/terraform/  GCP IaC — Cloud Run, Cloud SQL, Ollama GPU MIG, Pub/Sub, Secret Manager, WIF, monitoring
 scripts/       bootstrap-gcp.sh, deploy.sh, export-graph.mjs, ci/ai-review.mjs, ci/validate-artifacts.mjs
-docs/img/      generated Mermaid (.mmd) exports + PNG screenshots of every workflow graph
+docs/img/      architecture figure + PNG screenshots of every workflow rendered from live n8n
 ```
 
 ## Data sources

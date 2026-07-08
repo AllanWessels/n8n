@@ -13,12 +13,12 @@
       "typeVersion": 1,
       "position": [
         -40,
-        -620
+        -800
       ]
     },
     {
       "parameters": {
-        "content": "### ① Parallel ingest\nThree trigger types converge on a warm-up Code node, which then fans out to 5 independent, parallel data sources: Jolpica standings, OpenF1 weather, Open-Meteo forecast, Kalshi KXF1 markets, and the Autosport RSS feed. A Merge node (combine) joins all 5 branches back into one item.",
+        "content": "### ① Parallel ingest\nThree triggers → a warm-up Code node → 5 parallel data sources → a Merge node joins them into one evidence bundle.",
         "height": 1040,
         "width": 760
       },
@@ -90,7 +90,7 @@
       "typeVersion": 2,
       "position": [
         0,
-        -380
+        -300
       ]
     },
     {
@@ -110,7 +110,7 @@
       "typeVersion": 1.2,
       "position": [
         0,
-        -160
+        -80
       ]
     },
     {
@@ -121,7 +121,7 @@
       "typeVersion": 1,
       "position": [
         0,
-        60
+        140
       ]
     },
     {
@@ -129,12 +129,12 @@
         "jsCode": "// ---------------------------------------------------------------------------\n// Prepare/warmup: normalizes whichever trigger fired (webhook / schedule /\n// manual) into one run-context item that downstream ingest nodes share.\n// ---------------------------------------------------------------------------\nconst now = new Date().toISOString();\n\nreturn [\n  {\n    json: {\n      runId: `run_${Date.now()}`,\n      domain: 'f1-kalshi',\n      subject: 'F1 2026 Drivers Championship',\n      startedAt: now,\n      // The Kalshi off-season means live order books are thin/null — see\n      // fixtures/README.md (\"Kalshi demo pricing\") for how yes_bid/yes_ask\n      // are handled when null.\n      seriesTicker: 'KXF1',\n    },\n  },\n];\n"
       },
       "id": "1bf7f0b8-ca3b-461e-916d-75b2317c6927",
-      "name": "Code: prepare/warmup",
+      "name": "Code: prepare run + warm model",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         240,
-        -160
+        -80
       ]
     },
     {
@@ -410,7 +410,7 @@
       "main": [
         [
           {
-            "node": "Code: prepare/warmup",
+            "node": "Code: prepare run + warm model",
             "type": "main",
             "index": 0
           }
@@ -421,7 +421,7 @@
       "main": [
         [
           {
-            "node": "Code: prepare/warmup",
+            "node": "Code: prepare run + warm model",
             "type": "main",
             "index": 0
           }
@@ -432,38 +432,7 @@
       "main": [
         [
           {
-            "node": "Code: prepare/warmup",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Code: prepare/warmup": {
-      "main": [
-        [
-          {
-            "node": "HTTP: Jolpica standings",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "HTTP: OpenF1 weather",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "HTTP: Open-Meteo forecast",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "HTTP: Kalshi KXF1 markets",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "RSS: Autosport F1 news",
+            "node": "Code: prepare run + warm model",
             "type": "main",
             "index": 0
           }
@@ -610,6 +579,37 @@
         [
           {
             "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: prepare run + warm model": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Jolpica standings",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP: OpenF1 weather",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP: Open-Meteo forecast",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP: Kalshi KXF1 markets",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS: Autosport F1 news",
             "type": "main",
             "index": 0
           }

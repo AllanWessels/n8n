@@ -107,20 +107,17 @@ e2e: ## Run the end-to-end decision-pipeline script (placeholder until wired)
 		exit 0; \
 	fi
 
-graph: ## Export the flagship workflow as a Mermaid graph (docs/img/workflow-graph.mmd)
-	@echo "==> Exporting workflow graph..."
-	node scripts/export-graph.mjs workflows/10-f1-edge-flagship.json docs/img/workflow-graph.mmd
+graph: ## Render authentic n8n canvases + the architecture figure to docs/img/*.png
+	@echo "==> Rendering architecture figure..."
+	node scripts/render-architecture.mjs
+	@echo "==> Rendering n8n canvases from the live instance (run 'make up && make import-workflows' first)..."
+	node scripts/configure-n8n-creds.mjs
+	node scripts/render-n8n-live.mjs
 
 pdf: ## Render README.md to docs/README.pdf (best-effort)
 	@echo "==> Rendering docs/README.pdf from README.md..."
 	@mkdir -p docs
-	@npx --yes md-to-pdf README.md --dest docs/README.pdf 2>/dev/null && cp README.pdf docs/README.pdf 2>/dev/null || true
-	@if [ -f docs/README.pdf ]; then \
-		echo "==> Wrote docs/README.pdf"; \
-	else \
-		echo "md-to-pdf did not produce docs/README.pdf."; \
-		echo "Try manually: npx --yes md-to-pdf README.md --dest docs/README.pdf"; \
-	fi
+	node scripts/render-pdf.mjs
 
 # --- GCP / Terraform ----------------------------------------------------------
 
