@@ -139,12 +139,13 @@
       "status": "active",
       "close_time": "2026-12-22T15:00:00Z",
       "rules_primary": "If Lando Norris wins the F1 Drivers Championship, then the market resolves to Yes.",
-      "yes_bid": 25,
-      "yes_ask": 28,
+      "yes_bid": 12,
+      "yes_ask": 15,
       "yes_bid_dollars_live": "0.0000",
       "yes_ask_dollars_live": "0.0100",
       "liquidity_dollars_live": "0.0000",
-      "_demo_priced": true
+      "_demo_priced": true,
+      "_demo_note": "underpriced vs model to demonstrate a positive-edge BUY"
     },
     {
       "ticker": "KXF1-26-LL",

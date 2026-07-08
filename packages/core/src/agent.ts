@@ -33,8 +33,15 @@ function safeStringify(payload: unknown): string {
 
 function buildPrompt(input: DecisionInput): { system: string; user: string } {
   const system =
-    'You are a careful analyst producing a probability assessment for a decision-support ' +
-    'system. Respond with ONLY a single JSON object of the form ' +
+    'You are a careful, well-calibrated analyst producing a probability assessment for a ' +
+    'decision-support system. Rules: (1) Base the number ONLY on the supplied evidence ' +
+    '(championship points, standings position, recent results, weather, news). ' +
+    '(2) Be calibrated: in a field of ~20 drivers only one wins a championship, so most ' +
+    'drivers should score well below 0.15; reserve high probabilities for clear points ' +
+    'leaders. Never output 1.0 unless the outcome is already mathematically certain. ' +
+    '(3) "reasoning" MUST be a non-empty sentence citing specific evidence (e.g. points, ' +
+    'position). (4) "keyFactors" MUST list 2-4 concrete factors. ' +
+    'Respond with ONLY a single JSON object of the form ' +
     '{"probability": number between 0 and 1, "reasoning": string, "keyFactors": string[]}. ' +
     'Do not include any text outside the JSON object.';
 
