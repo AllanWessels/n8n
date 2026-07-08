@@ -6,7 +6,7 @@
 # whole platform lifecycle is discoverable from one place.
 # =============================================================================
 
-.PHONY: help install test test-cov lint typecheck \
+.PHONY: help install build test test-cov lint typecheck \
         up down logs ps warm import-workflows seed e2e graph pdf \
         bootstrap-gcp deploy gpu-up gpu-down destroy clean
 
@@ -48,6 +48,18 @@ help: ## Show this help
 install: ## Install npm dependencies (workspace root + packages)
 	@echo "==> Installing dependencies..."
 	npm install
+
+# Install sentinel: `npm install` only when deps are missing or stale relative
+# to the manifests, so `build`/`e2e` on a fresh clone auto-install without a
+# reinstall on every invocation.
+node_modules: package.json package-lock.json
+	@echo "==> Installing dependencies..."
+	npm install
+	@touch node_modules
+
+build: node_modules ## Compile the TypeScript packages (tsc --build); auto-installs deps first
+	@echo "==> Building TypeScript packages..."
+	npm run build
 
 test: ## Run the test suite (vitest)
 	@echo "==> Running tests..."
@@ -112,7 +124,7 @@ seed: ## (Re)apply db/schema.sql to postgres — idempotent (CREATE TABLE IF NOT
 	docker exec -i $(POSTGRES_CONTAINER) psql -U $${DB_POSTGRESDB_USER:-n8n} -d $${DB_POSTGRESDB_DATABASE:-n8n} < db/schema.sql
 	@echo "==> Schema applied."
 
-e2e: ## Run the end-to-end decision-pipeline script against a host-reachable Ollama ($(OLLAMA_HOST_URL))
+e2e: build ## Run the end-to-end decision-pipeline script against a host-reachable Ollama ($(OLLAMA_HOST_URL))
 	@if [ -f scripts/run-decision.mjs ]; then \
 		echo "==> Running scripts/run-decision.mjs (Ollama: $(OLLAMA_HOST_URL))..."; \
 		node scripts/run-decision.mjs --ollama-url $(OLLAMA_HOST_URL); \
