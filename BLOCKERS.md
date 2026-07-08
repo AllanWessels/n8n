@@ -8,14 +8,21 @@
 - **Repo**: pushed to https://github.com/AllanWessels/n8n — clone→run, README (+PDF), 141 tests, CI/CD.
 
 ## Action items for you
-1. **Complete the n8n owner account** (one-time): open https://f1-n8n-4nbtikalia-uc.a.run.app/setup and create the
-   owner login. Then import the workflows: `make import-workflows` (or Import from the UI), and in n8n set the
-   credentials referenced by the nodes — Postgres (Cloud SQL), Ollama (once GPU is up), and the JWT webhook secret
-   (already in Secret Manager as `f1-n8n-jwt-secret`).
-2. **GPU (L4) quota** — currently deferred (`enable_gpu=false`). New projects start at 0 L4 quota.
-   - Request quota: Console → IAM & Admin → Quotas → filter "NVIDIA L4 GPUs" (region `us-central1`) → request ≥1.
-   - Once granted: set `enable_gpu=true` in `infra/terraform/terraform.tfvars` and `make deploy` (or `make gpu-up`).
-   - Until then the cloud n8n has no LLM endpoint; the **local** stack (RTX 5080 + Ollama) runs the full AI pipeline.
+1. **n8n owner account — DONE.** The owner login on https://f1-n8n-4nbtikalia-uc.a.run.app is created
+   (owner `j.allan.wessels@gmail.com`; password shared privately — change it in Settings → change password).
+   Remaining (couldn't be done from the assistant's sandbox — it blocks writes to the live instance): **import the
+   3 workflows** and set node credentials. Fastest path: log in → **Workflows → Import from File** → pick each of
+   `workflows/*.json`. Then set the credentials the nodes reference — Postgres (Cloud SQL), Ollama (the GPU ILB IP,
+   step 2), and the JWT webhook secret (already in Secret Manager as `f1-n8n-jwt-secret`).
+2. **GPU (L4) quota — GRANTED** (`NVIDIA_L4_GPUS: limit=1`, spot too, `us-central1`). `enable_gpu=true` is now set in
+   `infra/terraform/terraform.tfvars` and Terraform is initialized with a clean plan (**10 to add, 0 to destroy**).
+   Apply it to create the MIG (it starts at **min=0 → $0 idle**):
+   ```bash
+   terraform -chdir=infra/terraform apply   # review the plan, then approve
+   ```
+   Then `make gpu-up PROJECT_ID=f1-decision-platform REGION=us-central1` scales it to 1 for a demo, and the Ollama
+   credential URL in n8n is `http://<f1-ollama-ilb-ip>:11434` (`terraform output`). The **local** stack runs the full
+   AI pipeline with no GPU cost in the meantime.
 3. **(Optional) live Kalshi** — market DATA is keyless (live prices work with no key). A key is only needed to
    demonstrate the (paper-only) trade path. To enable: `gcloud secrets versions add f1-kalshi-api-key-id ...` and
    `f1-kalshi-private-key ...`, then set `KALSHI_MODE=live`. Defaults to fixtures otherwise.

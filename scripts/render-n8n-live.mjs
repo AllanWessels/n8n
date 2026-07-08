@@ -58,6 +58,21 @@ for (const [id, out, label] of TARGETS) {
   await page.waitForSelector('.vue-flow__node', { timeout: 30000 });
   await page.waitForTimeout(1500);
 
+  // Theme the canvas for the README: black backdrop (instead of the default
+  // light grid) and bright-green 50%-opacity sticky-note panels (instead of
+  // yellow). Node cards are left as-is so they pop on black.
+  await page.addStyleTag({ content: `
+    .vue-flow__background { background:#000 !important; }
+    .vue-flow__background circle { fill:#2f2f2f !important; }
+    .vue-flow__node [class*="sticky"] {
+      background: rgba(74,222,128,0.5) !important;
+      border-color: rgba(74,222,128,0.9) !important;
+    }
+    /* nested sticky layers must be transparent so the green isn't doubled */
+    .vue-flow__node [class*="sticky"] [class*="sticky"] { background: transparent !important; }
+  ` });
+  await page.waitForTimeout(250);
+
   // Fit the whole graph into view (button if present, else the "1" shortcut).
   const fitBtn = page.locator('[data-test-id="zoom-to-fit"]');
   if (await fitBtn.count()) {

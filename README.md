@@ -164,8 +164,53 @@ make deploy          # terraform init + apply (infra/terraform/)
 ```
 
 - **Scale-to-zero by default**: `min_instances=0` on the n8n Cloud Run service (`infra/terraform/variables.tf`) — idle cost is near-zero.
-- **GPU is a toggle, not a hard dependency**: `enable_gpu` (default `true`) provisions the spot L4 Ollama MIG; set it to `false` for a CPU-only/no-GPU-quota demo. As deployed today, **the GPU MIG has not been created yet** — new GCP projects start with 0 GPU quota in most regions, and a quota increase request is pending (`BLOCKERS.md`, `scripts/deploy.sh`'s own printed note). n8n itself is live on Cloud Run.
+- **GPU inference tier scales to zero**: `enable_gpu=true` (the default) provisions the spot **L4** Ollama MIG behind an internal load balancer, autoscaling **0→2** and sitting at **zero when idle** — so it costs nothing until a run warms it. L4 quota is granted on the deployed project, so `make deploy` brings the tier up; `make gpu-up` (or the warm-up workflow) scales it to 1 before a demo and `make gpu-down` returns it to zero. Set `enable_gpu=false` for a CPU-only demo.
 - **CD is opt-in**: `.github/workflows/cd.yml` deploys on push to `main` via Workload Identity Federation (no long-lived GCP keys), but only runs when the `ENABLE_CD` repo variable is `true` — a deliberate safety gate documented in `.github/workflows/README.md`.
+
+## Running it
+
+Two ways to watch a governed decision get produced end to end.
+
+**Locally — zero credentials, no GPU required (~2 min):**
+
+```bash
+docker compose up -d          # postgres + n8n + ollama
+make warm                     # pull the Qwen models into local Ollama
+make import-workflows         # load workflows/*.json into n8n
+```
+
+Then either run it headless from the CLI —
+
+```bash
+make e2e                      # prints the SUBJECT / MODEL / MARKET / SIGNAL / ACTION / JUDGE / STATUS table
+```
+
+— or open **http://localhost:5678**, open **Market-Signal Decision Pipeline**, and click **Execute workflow**. The CLI path is fully deterministic (`--stub`), so it needs no GPU at all.
+
+**On the live GCP instance:**
+
+```bash
+# 1. warm the GPU inference tier (spot L4; first run pulls the model, ~3-4 min)
+make gpu-up   PROJECT_ID=f1-decision-platform REGION=us-central1
+# 2. open the live n8n (the Cloud Run URL from `terraform output n8n_url`), open the
+#    flagship workflow, and click Execute — or POST the JWT-secured webhook on the Webhook node
+# 3. release the GPU when done
+make gpu-down PROJECT_ID=f1-decision-platform REGION=us-central1
+```
+
+Every run writes a row to the `decision_ledger` table and returns the decision as JSON.
+
+**What it costs to run.** Because the model is **local** (no per-token API fee), cost is GPU wall-clock, not per call:
+
+| Scenario | Cost |
+|---|---|
+| Idle — everything scaled to zero | **~$8/mo** — just the Cloud SQL `db-f1-micro` |
+| Spot L4 GPU while warm | **~$0.25/hr** (≈ $0.004/min) |
+| One full 9-candidate decision run, warm | ~2 min GPU ≈ **$0.01** |
+| First run of a session (cold model load) | **+~$0.02** one-time (~3–4 min) |
+| ~100 full demo runs | **≈ $1** of GPU + the flat ~$8/mo DB |
+
+Cloud Run n8n is scale-to-zero (pennies per run); the GPU bills only while scaled up, so a 10-minute demo is a few cents. `make destroy` tears everything down.
 
 ## Project layout
 
@@ -206,4 +251,4 @@ Every evidence source is a **pluggable adapter**, not a hardcoded integration: e
 - **Fixture-backed, zero-credential onboarding.** `KALSHI_MODE=fixture` and the equivalents for every other source default to on everywhere (`.env.example`, `packages/app/src/evidence.ts`), backed by real captured API snapshots in `fixtures/`. Anyone can clone and run the full pipeline with no API keys; flipping to live mode is a config change per source, and only order-*placement*-style write paths (which this platform doesn't implement — see below) would ever need signing credentials.
 - **Read-only by construction on the reference domain.** There is no order-submission code path anywhere in `@dop/kalshi` (see the file-level comment in `packages/kalshi/src/client.ts`: *"Paper-only: order execution intentionally not implemented; this client is read-only"*). Every governed recommendation is a logged, auditable entry in `decision_ledger` — a decision record, not a transaction.
 - **Deterministic-by-construction library code.** Only `packages/app/src/cli.ts` is allowed to touch `Date.now()`/`randomUUID()` — every other module takes `createdAt`/`id` as parameters, which is what makes the 141-test suite fast and hermetic (see the doc comment at the top of `cli.ts`).
-- **Known gap, tracked openly.** The Ollama GPU MIG on GCP is written and `terraform apply`-ready but not yet provisioned pending an L4 quota grant (`BLOCKERS.md`) — n8n itself is live on Cloud Run today, and the local Ollama stack runs the full AI pipeline in the meantime.
+- **GPU inference scales to zero.** The Ollama tier runs on a spot-L4 GPU MIG that autoscales **0→2** and idles at zero — the model is warmed on demand (`make gpu-up` or the warm-up workflow) before a run and released after, so the only always-on GCP cost is the small Cloud SQL instance (~$8/mo). n8n is live on Cloud Run; the identical local Ollama stack runs the full pipeline offline with no cloud at all.

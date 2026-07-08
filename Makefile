@@ -131,14 +131,14 @@ deploy: ## Apply Terraform to the GCP project (infra/terraform)
 
 gpu-up: ## Scale the Ollama GPU MIG instance group up (requires PROJECT_ID, REGION)
 	@echo "==> Scaling Ollama GPU instance group up (PROJECT_ID=$(PROJECT_ID) REGION=$(REGION))..."
-	@echo "Requires env: PROJECT_ID, REGION, and an existing MIG named 'ollama-gpu-mig'."
-	gcloud compute instance-groups managed resize ollama-gpu-mig \
+	@echo "Requires env: PROJECT_ID, REGION, and an existing MIG named 'f1-ollama-mig'."
+	gcloud compute instance-groups managed resize f1-ollama-mig \
 		--project=$(PROJECT_ID) --region=$(REGION) --size=1
 
 gpu-down: ## Scale the Ollama GPU MIG instance group down to zero (saves cost)
 	@echo "==> Scaling Ollama GPU instance group down (PROJECT_ID=$(PROJECT_ID) REGION=$(REGION))..."
-	@echo "Requires env: PROJECT_ID, REGION, and an existing MIG named 'ollama-gpu-mig'."
-	gcloud compute instance-groups managed resize ollama-gpu-mig \
+	@echo "Requires env: PROJECT_ID, REGION, and an existing MIG named 'f1-ollama-mig'."
+	gcloud compute instance-groups managed resize f1-ollama-mig \
 		--project=$(PROJECT_ID) --region=$(REGION) --size=0
 
 destroy: ## Destroy all Terraform-managed GCP resources
