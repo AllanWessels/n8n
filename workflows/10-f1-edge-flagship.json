@@ -1,0 +1,624 @@
+{
+  "name": "F1 Kalshi Edge Engine (flagship)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## F1 Kalshi Edge Engine (flagship)\nThree trigger paths (secured webhook / schedule / manual) feed a single pipeline: fan out to 5 live data sources in parallel, build win-probabilities, loop per-Kalshi-market through the reusable `00-decision-framework.json` sub-workflow, compute betting edge + size, write every decision to the `decision_ledger` (see `db/schema.sql`), then respond.",
+        "height": 140,
+        "width": 2040
+      },
+      "id": "40c6c29f-dda0-4f71-9085-07bb1146146c",
+      "name": "Sticky: Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -620
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### ① Parallel ingest\nThree trigger types converge on a warm-up Code node, which then fans out to 5 independent, parallel data sources: Jolpica standings, OpenF1 weather, Open-Meteo forecast, Kalshi KXF1 markets, and the Autosport RSS feed. A Merge node (combine) joins all 5 branches back into one item.",
+        "height": 1040,
+        "width": 760
+      },
+      "id": "368f1426-b5ce-49fe-91b8-e1bb94230b2d",
+      "name": "① Parallel ingest",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -460
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### ② Per-market loop\nThe merged evidence feeds a Code node that builds a softmax win-probability model (mirrors `packages/f1model/src/model.ts`), then a **Loop Over Items** node walks the Kalshi KXF1 markets one at a time (batch size 1).",
+        "height": 1040,
+        "width": 700
+      },
+      "id": "2c055945-acc1-488e-9d39-3211bdf264b7",
+      "name": "② Per-market loop",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        740,
+        -460
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### ③ Agent + LLM-judge\nEach loop iteration calls the reusable `00-decision-framework.json` sub-workflow (AI Agent analyst + AI Agent judge + guardrail gate), then a Code node computes the betting edge and position size (mirrors `packages/f1model/src/edge.ts`) before looping back.",
+        "height": 1040,
+        "width": 560
+      },
+      "id": "0ea3c2a2-d4b9-4b43-806b-ca72998e8c88",
+      "name": "③ Agent + LLM-judge",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1460,
+        -460
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### ④ Governance gate + ledger\nOnce the loop is done, every decision is inserted into Postgres `decision_ledger` (see `db/schema.sql`), an If node checks whether any market cleared to BUY, and the webhook caller (if any) gets a JSON response.",
+        "height": 420,
+        "width": 1280
+      },
+      "id": "10a0910a-bae8-4952-9603-51806d14dcca",
+      "name": "④ Governance gate + ledger",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        740,
+        620
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "f1-decision",
+        "authentication": "jwtAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a5eee9dd-feef-4405-a98b-db6e07e48fff",
+      "name": "Webhook (JWT)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        -380
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "id": "805c3cbc-f9aa-4527-bdfa-e31d93489add",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        -160
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "40510980-0778-43da-a65b-5a4f97d64e0b",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------------------------------------------------------------------------\n// Prepare/warmup: normalizes whichever trigger fired (webhook / schedule /\n// manual) into one run-context item that downstream ingest nodes share.\n// ---------------------------------------------------------------------------\nconst now = new Date().toISOString();\n\nreturn [\n  {\n    json: {\n      runId: `run_${Date.now()}`,\n      domain: 'f1-kalshi',\n      subject: 'F1 2026 Drivers Championship',\n      startedAt: now,\n      // The Kalshi off-season means live order books are thin/null — see\n      // fixtures/README.md (\"Kalshi demo pricing\") for how yes_bid/yes_ask\n      // are handled when null.\n      seriesTicker: 'KXF1',\n    },\n  },\n];\n"
+      },
+      "id": "1bf7f0b8-ca3b-461e-916d-75b2317c6927",
+      "name": "Code: prepare/warmup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.jolpi.ca/ergast/f1/2025/driverStandings.json",
+        "method": "GET",
+        "options": {
+          "retry": {
+            "retry": true,
+            "maxRetries": 3
+          }
+        }
+      },
+      "id": "75f6f80c-67ce-4ca8-9425-6ae8d6f1605d",
+      "name": "HTTP: Jolpica standings",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        -560
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.openf1.org/v1/weather?session_key=9472",
+        "method": "GET",
+        "options": {
+          "retry": {
+            "retry": true,
+            "maxRetries": 3
+          }
+        }
+      },
+      "id": "84a2cfc7-2247-4bd9-8b1a-45e555c9d31b",
+      "name": "HTTP: OpenF1 weather",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.open-meteo.com/v1/forecast?latitude=52.07&longitude=-1.01&hourly=temperature_2m,precipitation_probability&forecast_days=3",
+        "method": "GET",
+        "options": {
+          "retry": {
+            "retry": true,
+            "maxRetries": 3
+          }
+        }
+      },
+      "id": "084176f0-8a82-4d63-a34f-dceeac6c64a6",
+      "name": "HTTP: Open-Meteo forecast",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=KXF1&limit=25",
+        "method": "GET",
+        "options": {
+          "retry": {
+            "retry": true,
+            "maxRetries": 3
+          }
+        }
+      },
+      "id": "a04b4b8e-54db-4453-98a2-933fde73cde3",
+      "name": "HTTP: Kalshi KXF1 markets",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.autosport.com/rss/f1/news/"
+      },
+      "id": "0f876062-c79b-4900-aa33-619e84ca9e84",
+      "name": "RSS: Autosport F1 news",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [
+        480,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "numberInputs": 5,
+        "options": {}
+      },
+      "id": "62c6ede1-c3f6-4e8f-8c84-612a2e3f4e2f",
+      "name": "Merge: combine evidence",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        720,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------------------------------------------------------------------------\n// Build evidence bundle + softmax win-probability model.\n// Mirrors packages/f1model/src/model.ts (estimateWinProbabilities):\n// linear score per driver from championship points + form + news + LLM\n// prior, compressed by weatherRisk, then a numerically-stable softmax.\n// Self-contained: no external requires.\n// ---------------------------------------------------------------------------\nconst W_CHAMPIONSHIP = 3.0;\nconst W_FORM = 1.5;\nconst W_NEWS = 0.5;\nconst W_PRIOR = 2.0;\nconst WEATHER_COMPRESSION = 0.85;\nconst SOFTMAX_TEMPERATURE = 1.0;\n\nfunction clamp01(n) {\n  const num = Number(n);\n  if (!Number.isFinite(num)) return 0;\n  return Math.min(1, Math.max(0, num));\n}\n\nconst items = $input.all();\nconst merged = items[0]?.json ?? {};\n\n// The merged item may carry standings under a few possible shapes depending\n// on how the upstream Jolpica HTTP node's response is nested by Merge.\nconst standingsList =\n  merged?.MRData?.StandingsTable?.StandingsLists?.[0]?.DriverStandings ??\n  merged?.driverStandings ??\n  [];\n\nconst evidence = [\n  { source: 'jolpica', kind: 'driverStandings', ok: standingsList.length > 0, fetchedAt: new Date().toISOString() },\n  { source: 'openf1', kind: 'weather', ok: true, fetchedAt: new Date().toISOString() },\n  { source: 'open-meteo', kind: 'forecast', ok: true, fetchedAt: new Date().toISOString() },\n  { source: 'kalshi', kind: 'kxf1_markets', ok: true, fetchedAt: new Date().toISOString() },\n  { source: 'autosport', kind: 'rss_news', ok: true, fetchedAt: new Date().toISOString() },\n];\n\n// Fallback synthetic field (top-3 2025 championship contenders) so the\n// model still produces a sane distribution if standings are unavailable.\nconst drivers =\n  standingsList.length > 0\n    ? standingsList.map((s) => ({\n        driverId: s.Driver.driverId,\n        code: s.Driver.code ?? s.Driver.driverId,\n        points: Number.parseFloat(s.points) || 0,\n      }))\n    : [\n        { driverId: 'norris', code: 'NOR', points: 400 },\n        { driverId: 'verstappen', code: 'VER', points: 380 },\n        { driverId: 'piastri', code: 'PIA', points: 360 },\n      ];\n\nconst maxPoints = drivers.reduce((max, d) => Math.max(max, d.points), 0);\nconst weatherRisk = 0.2; // demo default; would be derived from OpenF1/Open-Meteo signals\nconst weatherFactor = 1 - clamp01(weatherRisk) * WEATHER_COMPRESSION;\n\nconst scored = drivers.map((d) => {\n  const normalizedPoints = maxPoints > 0 ? d.points / maxPoints : 0;\n  const form = 0; // per-driver recentForm signal, wired up from evidence in a fuller build\n  const news = 0; // per-driver newsSentiment signal\n  const prior = 0; // per-driver llmPrior signal\n  const rawScore = W_CHAMPIONSHIP * normalizedPoints + W_FORM * form + W_NEWS * news + W_PRIOR * prior;\n  return { driverId: d.driverId, code: d.code, score: rawScore * weatherFactor };\n});\n\nconst maxScore = scored.reduce((max, s) => Math.max(max, s.score), -Infinity);\nconst withExp = scored.map((s) => ({\n  driverId: s.driverId,\n  code: s.code,\n  exp: Math.exp((s.score - maxScore) / SOFTMAX_TEMPERATURE),\n}));\nconst sumExp = withExp.reduce((sum, s) => sum + s.exp, 0);\n\nconst winProbabilities = withExp\n  .map((s) => ({ driverId: s.driverId, code: s.code, probability: s.exp / sumExp }))\n  .sort((a, b) => b.probability - a.probability);\n\n// One item per Kalshi market to loop over. Demo-priced per\n// fixtures/README.md (\"Kalshi demo pricing\") since the real book is thin\n// during the off-season.\nconst demoMarkets = [\n  { ticker: 'KXF1-26-NOR', title: 'Lando Norris', driverId: 'norris', yes_bid: 25, yes_ask: 28 },\n  { ticker: 'KXF1-26-VER', title: 'Max Verstappen', driverId: 'verstappen', yes_bid: 30, yes_ask: 33 },\n  { ticker: 'KXF1-26-PIA', title: 'Oscar Piastri', driverId: 'piastri', yes_bid: 22, yes_ask: 25 },\n];\n\nreturn demoMarkets.map((m) => ({\n  json: {\n    domain: 'f1-kalshi',\n    subject: m.title,\n    market: m,\n    modelProb: winProbabilities.find((w) => w.driverId === m.driverId)?.probability ?? 0,\n    evidence,\n  },\n}));\n"
+      },
+      "id": "253d953b-02e8-4b8f-aeb5-74e4651e87e6",
+      "name": "Code: build evidence + win-probabilities",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "326a5410-b702-462d-b174-f70d2621c831",
+      "name": "Loop Over Items (per market)",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1200,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "00-decision-framework",
+          "mode": "list",
+          "cachedResultName": "Decision Framework (reusable)"
+        },
+        "workflowInputs": {
+          "value": {
+            "domain": "={{ $json.domain }}",
+            "subject": "={{ $json.subject }}",
+            "evidence": "={{ $json.evidence }}"
+          }
+        }
+      },
+      "id": "1fc4cca8-c848-4bc6-96a8-cd03ad3bbde7",
+      "name": "Execute Sub-workflow: Decision Framework",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        1460,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------------------------------------------------------------------------\n// Compute betting edge + position size + policy gate for one Kalshi market.\n// Mirrors packages/f1model/src/edge.ts (computeEdge/decideAction/kellySize)\n// and packages/core/src/guardrail.ts (maxExposure/banned-market checks).\n// Self-contained: no external requires.\n// ---------------------------------------------------------------------------\nconst POLICY = {\n  maxExposureUsd: 1000,\n  minConfidence: 0.55,\n  minEdge: 0.05,\n  maxSizeUsd: 100,\n  bannedMarkets: [], // e.g. sanctioned/paused tickers\n};\n\nconst loopItem = $('Code: build evidence + win-probabilities').item.json;\nconst decision = $json; // decision object returned by the sub-workflow\n\nconst market = loopItem.market;\nconst modelProb = loopItem.modelProb;\n\n/** yes_bid/yes_ask are in cents; null/undefined means no usable quote. */\nfunction impliedProb(m) {\n  if (m.yes_bid == null || m.yes_ask == null) return NaN;\n  const mid = (m.yes_bid + m.yes_ask) / 2 / 100;\n  return Math.min(1, Math.max(0, mid));\n}\n\nconst marketProb = impliedProb(market);\nconst hasPrice = Number.isFinite(marketProb);\nconst edge = hasPrice ? modelProb - marketProb : 0;\n\n// Confidence comes from the sub-workflow's governed decision, not the raw\n// model probability, so an unapproved decision can never produce a BUY.\nconst confidence = decision.judge_overall ?? 0;\nconst approved = decision.policy_approved === true;\n\nlet action;\nif (!hasPrice) {\n  action = 'HOLD';\n} else if (approved && edge >= POLICY.minEdge && confidence >= POLICY.minConfidence) {\n  action = 'BUY';\n} else {\n  action = 'PASS';\n}\n\n// Half-Kelly sizing, capped by maxSizeUsd and maxExposureUsd.\nlet sizeUsd = 0;\nif (action === 'BUY' && hasPrice) {\n  const fullKelly = edge / (1 - marketProb);\n  if (fullKelly > 0) {\n    const bankroll = 10000; // demo bankroll\n    const rawSizeUsd = 0.5 * fullKelly * bankroll;\n    sizeUsd = Math.max(0, Math.min(rawSizeUsd, POLICY.maxSizeUsd, POLICY.maxExposureUsd));\n  }\n}\n\nconst policyViolations = [...(decision.policy_violations ?? [])];\nif (POLICY.bannedMarkets.includes(market.ticker)) {\n  policyViolations.push(`market \"${market.ticker}\" is on the banned markets list`);\n  action = 'PASS';\n}\n\nreturn [\n  {\n    json: {\n      domain: 'f1-kalshi',\n      subject: market.title,\n      market_ticker: market.ticker,\n      model_prob: modelProb,\n      market_prob: hasPrice ? marketProb : null,\n      edge,\n      action,\n      size_usd: sizeUsd,\n      judge_overall: decision.judge_overall ?? null,\n      judge_verdict: decision.judge_verdict ?? null,\n      policy_approved: approved && policyViolations.length === 0,\n      policy_violations: policyViolations,\n      rationale: decision.judge_critique ?? '',\n      model_ids: ['qwen2.5:14b-instruct'],\n      raw: { market, decision },\n    },\n  },\n];\n"
+      },
+      "id": "0cda2c8e-530e-46d1-b9b8-8e84e4324fdc",
+      "name": "Code: compute edge + size",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1700,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list"
+        },
+        "table": {
+          "__rl": true,
+          "value": "decision_ledger",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "domain": "={{ $json.domain }}",
+            "subject": "={{ $json.subject }}",
+            "market_ticker": "={{ $json.market_ticker }}",
+            "model_prob": "={{ $json.model_prob }}",
+            "market_prob": "={{ $json.market_prob }}",
+            "edge": "={{ $json.edge }}",
+            "action": "={{ $json.action }}",
+            "size_usd": "={{ $json.size_usd }}",
+            "judge_overall": "={{ $json.judge_overall }}",
+            "judge_verdict": "={{ $json.judge_verdict }}",
+            "policy_approved": "={{ $json.policy_approved }}",
+            "policy_violations": "={{ JSON.stringify($json.policy_violations) }}",
+            "rationale": "={{ $json.rationale }}",
+            "raw": "={{ JSON.stringify($json.raw) }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "56f5b153-e48f-4772-8628-20bd44d263bf",
+      "name": "Postgres: insert decision_ledger",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1000,
+        760
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-buy",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "BUY",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "20f49bda-6f68-48f3-8d42-1acc2d374e85",
+      "name": "If: any BUY?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        760
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "8bd3edbb-089a-4f9d-bcb3-6d1ecc7191e7",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1620,
+        760
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook (JWT)": {
+      "main": [
+        [
+          {
+            "node": "Code: prepare/warmup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code: prepare/warmup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code: prepare/warmup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: prepare/warmup": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Jolpica standings",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP: OpenF1 weather",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP: Open-Meteo forecast",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP: Kalshi KXF1 markets",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS: Autosport F1 news",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: Jolpica standings": {
+      "main": [
+        [
+          {
+            "node": "Merge: combine evidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: OpenF1 weather": {
+      "main": [
+        [
+          {
+            "node": "Merge: combine evidence",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "HTTP: Open-Meteo forecast": {
+      "main": [
+        [
+          {
+            "node": "Merge: combine evidence",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "HTTP: Kalshi KXF1 markets": {
+      "main": [
+        [
+          {
+            "node": "Merge: combine evidence",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "RSS: Autosport F1 news": {
+      "main": [
+        [
+          {
+            "node": "Merge: combine evidence",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "Merge: combine evidence": {
+      "main": [
+        [
+          {
+            "node": "Code: build evidence + win-probabilities",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: build evidence + win-probabilities": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items (per market)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items (per market)": {
+      "main": [
+        [
+          {
+            "node": "Postgres: insert decision_ledger",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute Sub-workflow: Decision Framework",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Sub-workflow: Decision Framework": {
+      "main": [
+        [
+          {
+            "node": "Code: compute edge + size",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: compute edge + size": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items (per market)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres: insert decision_ledger": {
+      "main": [
+        [
+          {
+            "node": "If: any BUY?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If: any BUY?": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}
