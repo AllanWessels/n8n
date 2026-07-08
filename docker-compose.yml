@@ -1,0 +1,103 @@
+# =============================================================================
+# f1-decision-platform — local-run stack
+#
+# Brings up Postgres (n8n storage + our decision ledger, same instance),
+# n8n (workflow orchestration), and Ollama (local model inference).
+#
+# Usage: `make up` (wraps `docker compose up -d`), see Makefile for the
+# full lifecycle (down, logs, ps, warm, seed, import-workflows, ...).
+#
+# Env vars are loaded from `.env` (gitignored). Copy `.env.example` to
+# `.env` and fill in real values before running.
+# =============================================================================
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: f1-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_POSTGRESDB_USER:-n8n}
+      POSTGRES_PASSWORD: ${DB_POSTGRESDB_PASSWORD:-n8n}
+      POSTGRES_DB: ${DB_POSTGRESDB_DATABASE:-n8n}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # This same database holds BOTH n8n's own internal tables (workflows,
+      # executions, credentials, ...) and our decision-ledger tables
+      # (decision_runs, evidence_snapshots, ...). n8n manages its own tables
+      # itself on boot; ours are created here via the initdb entrypoint.
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/10-schema.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_POSTGRESDB_USER:-n8n} -d ${DB_POSTGRESDB_DATABASE:-n8n}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    env_file:
+      - .env
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: f1-n8n
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: ${DB_POSTGRESDB_DATABASE:-n8n}
+      DB_POSTGRESDB_USER: ${DB_POSTGRESDB_USER:-n8n}
+      DB_POSTGRESDB_PASSWORD: ${DB_POSTGRESDB_PASSWORD:-n8n}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-}
+      N8N_HOST: ${N8N_HOST:-localhost}
+      N8N_PORT: ${N8N_PORT:-5678}
+      N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
+      WEBHOOK_URL: ${WEBHOOK_URL:-http://localhost:5678/}
+      GENERIC_TIMEZONE: ${GENERIC_TIMEZONE:-UTC}
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      # Local-only convenience: n8n normally requires a secure cookie over
+      # HTTPS. We're on plain http://localhost here, so disable that check.
+      N8N_SECURE_COOKIE: "false"
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n-data:/home/node/.n8n
+      # Mount workflow JSON exports read-only so `make import-workflows`
+      # can import them via the n8n CLI inside the container.
+      - ./workflows:/workflows:ro
+    env_file:
+      - .env
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: f1-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    # --- Optional NVIDIA GPU acceleration ---------------------------------
+    # Without this block, Ollama runs on CPU (slower, but works everywhere).
+    # To enable GPU acceleration on a host with an NVIDIA GPU:
+    #   1. Install the NVIDIA driver + the nvidia-container-toolkit on the
+    #      Docker host (see https://github.com/NVIDIA/nvidia-container-toolkit).
+    #   2. Uncomment the `deploy.resources.reservations.devices` block below.
+    #   3. `docker compose up -d ollama` (recreate the container).
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    env_file:
+      - .env
+
+volumes:
+  postgres-data:
+  n8n-data:
+  ollama-data:
