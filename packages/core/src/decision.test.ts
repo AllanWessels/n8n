@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { DecisionRecordSchema } from '@f1/contracts';
-import type { AgentAssessment, DecisionInput, EdgeResult, JudgeRubric, PolicyConfig } from '@f1/contracts';
+import { DecisionRecordSchema } from '@dop/contracts';
+import type { AgentAssessment, DecisionInput, EdgeResult, JudgeRubric, PolicyConfig } from '@dop/contracts';
 import { buildDecisionRecord, runDecision } from './decision.js';
 import { StubLLM } from './ollama.js';
 

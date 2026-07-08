@@ -1,5 +1,5 @@
 {
-  "name": "@f1/app",
+  "name": "@dop/app",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -19,10 +19,10 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@f1/contracts": "*",
-    "@f1/kalshi": "*",
-    "@f1/f1model": "*",
-    "@f1/core": "*",
+    "@dop/contracts": "*",
+    "@dop/kalshi": "*",
+    "@dop/f1model": "*",
+    "@dop/core": "*",
     "pg": "^8.13.0"
   },
   "devDependencies": {

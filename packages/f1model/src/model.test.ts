@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { JolpicaDriverStanding } from '@f1/contracts';
+import type { JolpicaDriverStanding } from '@dop/contracts';
 import { estimateWinProbabilities } from './model.js';
 
 function standing(

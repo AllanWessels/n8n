@@ -2,15 +2,15 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DEFAULT_F1_RUBRIC, DecisionRecordSchema, loadPolicyFromEnv } from '@f1/contracts';
-import { StubLLM } from '@f1/core';
+import { DEFAULT_F1_RUBRIC, DecisionRecordSchema, loadPolicyFromEnv } from '@dop/contracts';
+import { StubLLM } from '@dop/core';
 import { findRepoRoot } from './evidence.js';
 import { InMemoryDecisionStore } from './persist.js';
 import { runF1Pipeline } from './pipeline.js';
 
 /**
  * A `StubLLM` responder that recognizes the two prompt shapes used by
- * `@f1/core` (agent assess vs. judge) and answers deterministically,
+ * `@dop/core` (agent assess vs. judge) and answers deterministically,
  * however many times it's called — unlike a fixed queue, this never runs
  * out no matter how many markets the pipeline processes.
  */

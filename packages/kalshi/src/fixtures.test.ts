@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
-import type { KalshiMarket } from '@f1/contracts';
+import type { KalshiMarket } from '@dop/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getMarkets, loadKalshiFixture } from './fixtures.js';
 import { KalshiClient } from './client.js';

@@ -4,7 +4,7 @@ import type {
   EdgeResult,
   PolicyConfig,
   PolicyDecision,
-} from '@f1/contracts';
+} from '@dop/contracts';
 
 /**
  * Checks a decision input against policy BEFORE any model call is made —

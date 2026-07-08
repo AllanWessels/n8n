@@ -1,5 +1,5 @@
 /**
- * LLM client abstraction. `@f1/core` never talks to a concrete model
+ * LLM client abstraction. `@dop/core` never talks to a concrete model
  * provider directly — everything downstream depends on the `LLM` interface
  * so callers can inject a real client (Ollama, hosted APIs, ...) or a
  * scripted `StubLLM` for deterministic tests.

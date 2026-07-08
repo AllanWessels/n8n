@@ -3,14 +3,14 @@
  * `f1-decision` CLI — runs the end-to-end F1 decision pipeline locally.
  *
  * This is a runtime entrypoint, not a library module: it is the one place
- * in `@f1/app` allowed to read the wall clock (`new Date().toISOString()`)
+ * in `@dop/app` allowed to read the wall clock (`new Date().toISOString()`)
  * and generate random ids, since every other module stays deterministic
  * and test-friendly.
  */
 import { randomUUID } from 'node:crypto';
-import { DEFAULT_F1_RUBRIC, loadPolicyFromEnv, type DecisionRecord } from '@f1/contracts';
-import { OllamaClient, StubLLM, type LLM } from '@f1/core';
-import type { KalshiMode } from '@f1/kalshi';
+import { DEFAULT_F1_RUBRIC, loadPolicyFromEnv, type DecisionRecord } from '@dop/contracts';
+import { OllamaClient, StubLLM, type LLM } from '@dop/core';
+import type { KalshiMode } from '@dop/kalshi';
 import { InMemoryDecisionStore, PgDecisionStore, type DecisionStore } from './persist.js';
 import { runF1Pipeline } from './pipeline.js';
 

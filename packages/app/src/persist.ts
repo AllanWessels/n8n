@@ -7,7 +7,7 @@
  */
 import pg from 'pg';
 import type { Pool } from 'pg';
-import type { DecisionRecord, Evidence } from '@f1/contracts';
+import type { DecisionRecord, Evidence } from '@dop/contracts';
 
 const { Pool: PgPool } = pg;
 

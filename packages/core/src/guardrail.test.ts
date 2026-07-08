@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { AgentAssessment, DecisionInput, EdgeResult, PolicyConfig } from '@f1/contracts';
+import type { AgentAssessment, DecisionInput, EdgeResult, PolicyConfig } from '@dop/contracts';
 import { checkDecisionPolicy, checkInputPolicy } from './guardrail.js';
 
 const policy: PolicyConfig = {

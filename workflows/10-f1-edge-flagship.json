@@ -1,9 +1,9 @@
 {
-  "name": "F1 Kalshi Edge Engine (flagship)",
+  "name": "Market-Signal Decision Pipeline (reference domain)",
   "nodes": [
     {
       "parameters": {
-        "content": "## F1 Kalshi Edge Engine (flagship)\nThree trigger paths (secured webhook / schedule / manual) feed a single pipeline: fan out to 5 live data sources in parallel, build win-probabilities, loop per-Kalshi-market through the reusable `00-decision-framework.json` sub-workflow, compute betting edge + size, write every decision to the `decision_ledger` (see `db/schema.sql`), then respond.",
+        "content": "## Market-Signal Decision Pipeline (reference domain)\nThree trigger paths (secured webhook / schedule / manual) feed a single pipeline: fan out to 5 live data sources in parallel, build win-probabilities, loop per-Kalshi-market through the reusable `00-decision-framework.json` sub-workflow, compute betting edge + size, write every decision to the `decision_ledger` (see `db/schema.sql`), then respond.",
         "height": 140,
         "width": 2040
       },
@@ -304,7 +304,7 @@
         "jsCode": "// ---------------------------------------------------------------------------\n// Compute betting edge + position size + policy gate for one Kalshi market.\n// Mirrors packages/f1model/src/edge.ts (computeEdge/decideAction/kellySize)\n// and packages/core/src/guardrail.ts (maxExposure/banned-market checks).\n// Self-contained: no external requires.\n// ---------------------------------------------------------------------------\nconst POLICY = {\n  maxExposureUsd: 1000,\n  minConfidence: 0.55,\n  minEdge: 0.05,\n  maxSizeUsd: 100,\n  bannedMarkets: [], // e.g. sanctioned/paused tickers\n};\n\nconst loopItem = $('Code: build evidence + win-probabilities').item.json;\nconst decision = $json; // decision object returned by the sub-workflow\n\nconst market = loopItem.market;\nconst modelProb = loopItem.modelProb;\n\n/** yes_bid/yes_ask are in cents; null/undefined means no usable quote. */\nfunction impliedProb(m) {\n  if (m.yes_bid == null || m.yes_ask == null) return NaN;\n  const mid = (m.yes_bid + m.yes_ask) / 2 / 100;\n  return Math.min(1, Math.max(0, mid));\n}\n\nconst marketProb = impliedProb(market);\nconst hasPrice = Number.isFinite(marketProb);\nconst edge = hasPrice ? modelProb - marketProb : 0;\n\n// Confidence comes from the sub-workflow's governed decision, not the raw\n// model probability, so an unapproved decision can never produce a BUY.\nconst confidence = decision.judge_overall ?? 0;\nconst approved = decision.policy_approved === true;\n\nlet action;\nif (!hasPrice) {\n  action = 'HOLD';\n} else if (approved && edge >= POLICY.minEdge && confidence >= POLICY.minConfidence) {\n  action = 'BUY';\n} else {\n  action = 'PASS';\n}\n\n// Half-Kelly sizing, capped by maxSizeUsd and maxExposureUsd.\nlet sizeUsd = 0;\nif (action === 'BUY' && hasPrice) {\n  const fullKelly = edge / (1 - marketProb);\n  if (fullKelly > 0) {\n    const bankroll = 10000; // demo bankroll\n    const rawSizeUsd = 0.5 * fullKelly * bankroll;\n    sizeUsd = Math.max(0, Math.min(rawSizeUsd, POLICY.maxSizeUsd, POLICY.maxExposureUsd));\n  }\n}\n\nconst policyViolations = [...(decision.policy_violations ?? [])];\nif (POLICY.bannedMarkets.includes(market.ticker)) {\n  policyViolations.push(`market \"${market.ticker}\" is on the banned markets list`);\n  action = 'PASS';\n}\n\nreturn [\n  {\n    json: {\n      domain: 'f1-kalshi',\n      subject: market.title,\n      market_ticker: market.ticker,\n      model_prob: modelProb,\n      market_prob: hasPrice ? marketProb : null,\n      edge,\n      action,\n      size_usd: sizeUsd,\n      judge_overall: decision.judge_overall ?? null,\n      judge_verdict: decision.judge_verdict ?? null,\n      policy_approved: approved && policyViolations.length === 0,\n      policy_violations: policyViolations,\n      rationale: decision.judge_critique ?? '',\n      model_ids: ['qwen2.5:14b-instruct'],\n      raw: { market, decision },\n    },\n  },\n];\n"
       },
       "id": "0cda2c8e-530e-46d1-b9b8-8e84e4324fdc",
-      "name": "Code: compute edge + size",
+      "name": "Code: compute signal + sizing",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -381,7 +381,7 @@
         "options": {}
       },
       "id": "20f49bda-6f68-48f3-8d42-1acc2d374e85",
-      "name": "If: any BUY?",
+      "name": "If: any recommendation?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
@@ -569,14 +569,14 @@
       "main": [
         [
           {
-            "node": "Code: compute edge + size",
+            "node": "Code: compute signal + sizing",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Code: compute edge + size": {
+    "Code: compute signal + sizing": {
       "main": [
         [
           {
@@ -591,14 +591,14 @@
       "main": [
         [
           {
-            "node": "If: any BUY?",
+            "node": "If: any recommendation?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "If: any BUY?": {
+    "If: any recommendation?": {
       "main": [
         [
           {

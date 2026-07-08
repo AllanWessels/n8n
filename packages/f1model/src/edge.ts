@@ -3,8 +3,8 @@
  * market's implied probability, decides an action, and sizes a position
  * with a fractional (half) Kelly criterion.
  */
-import type { EdgeAction, EdgeResult, KalshiMarket, PolicyConfig } from '@f1/contracts';
-import { kalshiImpliedProb } from '@f1/contracts';
+import type { EdgeAction, EdgeResult, KalshiMarket, PolicyConfig } from '@dop/contracts';
+import { kalshiImpliedProb } from '@dop/contracts';
 
 /**
  * Default policy used internally by {@link computeEdge} when it needs to

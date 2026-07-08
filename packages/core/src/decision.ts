@@ -9,7 +9,7 @@ import {
   type JudgeScore,
   type PolicyConfig,
   type PolicyDecision,
-} from '@f1/contracts';
+} from '@dop/contracts';
 import { assess } from './agent.js';
 import { judge } from './judge.js';
 import { checkDecisionPolicy, checkInputPolicy } from './guardrail.js';

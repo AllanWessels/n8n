@@ -1,4 +1,4 @@
-import { kalshiImpliedProb } from '@f1/contracts';
+import { kalshiImpliedProb } from '@dop/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_KALSHI_BASE_URL, KalshiClient } from './client.js';
 

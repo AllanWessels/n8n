@@ -26,7 +26,7 @@
  * The output always sums to 1.0 (within floating point tolerance) and is
  * sorted by descending probability.
  */
-import type { JolpicaDriverStanding } from '@f1/contracts';
+import type { JolpicaDriverStanding } from '@dop/contracts';
 
 /** A single driver's estimated probability of winning. */
 export interface DriverProb {

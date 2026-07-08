@@ -1,7 +1,7 @@
 /**
  * End-to-end F1 decision pipeline: gather evidence, estimate win
  * probabilities, compute a betting edge per Kalshi market, run each market
- * through the `@f1/core` agent/judge decision loop, and persist the result.
+ * through the `@dop/core` agent/judge decision loop, and persist the result.
  */
 import type {
   DecisionInput,
@@ -11,10 +11,10 @@ import type {
   JudgeRubric,
   KalshiMarket,
   PolicyConfig,
-} from '@f1/contracts';
-import { computeEdge, estimateWinProbabilities } from '@f1/f1model';
-import { runDecision, type LLM } from '@f1/core';
-import type { KalshiMode } from '@f1/kalshi';
+} from '@dop/contracts';
+import { computeEdge, estimateWinProbabilities } from '@dop/f1model';
+import { runDecision, type LLM } from '@dop/core';
+import type { KalshiMode } from '@dop/kalshi';
 import { gatherEvidence } from './evidence.js';
 import type { DecisionStore } from './persist.js';
 
@@ -54,9 +54,9 @@ export function matchDriver(
 }
 
 /**
- * `@f1/f1model`'s `computeEdge` intentionally returns `marketProb: NaN` to
+ * `@dop/f1model`'s `computeEdge` intentionally returns `marketProb: NaN` to
  * signal "no usable market price" for a HOLD action (see
- * `packages/f1model/src/edge.ts`). But `@f1/contracts`' `EdgeResultSchema`
+ * `packages/f1model/src/edge.ts`). But `@dop/contracts`' `EdgeResultSchema`
  * validates `marketProb` with zod's `z.number()`, which — unlike plain JS
  * `typeof x === 'number'` — rejects `NaN`. Left as-is, that HOLD result
  * would make `DecisionRecordSchema.parse` (called inside `runDecision`)
@@ -75,7 +75,7 @@ function withSchemaSafeMarketProb(edge: EdgeResult): EdgeResult {
  * Runs the full F1 decision pipeline: gathers evidence once, estimates a
  * win-probability distribution over the field, then walks up to `limit`
  * Kalshi markets — matching each to a driver, computing a betting edge, and
- * running it through `@f1/core`'s agent -> judge -> policy decision loop.
+ * running it through `@dop/core`'s agent -> judge -> policy decision loop.
  * Markets with no driver match or a non-finite market price still produce a
  * decision record (PASS/HOLD) rather than being skipped or throwing.
  * Persists the run, its evidence, and every record via `store`.

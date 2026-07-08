@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import * as path from 'node:path';
-import type { KalshiMarket } from '@f1/contracts';
+import type { KalshiMarket } from '@dop/contracts';
 import { KalshiClient, type GetMarketsParams } from './client.js';
 
 export interface LoadKalshiFixtureOptions {

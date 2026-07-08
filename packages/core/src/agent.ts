@@ -1,4 +1,4 @@
-import type { AgentAssessment, DecisionInput } from '@f1/contracts';
+import type { AgentAssessment, DecisionInput } from '@dop/contracts';
 import type { LLM } from './ollama.js';
 import { clamp, extractFirstJsonObject } from './json.js';
 

@@ -4,7 +4,7 @@
  * In `fixture` mode every source is read deterministically from the
  * recorded JSON fixtures under `${root}/fixtures/**` (no network access —
  * see `fixtures/README.md`). In `live` mode Kalshi markets are fetched from
- * the live Kalshi API via `@f1/kalshi`; the remaining sources (Jolpica
+ * the live Kalshi API via `@dop/kalshi`; the remaining sources (Jolpica
  * standings/results, Open-Meteo weather, Autosport news) have no live
  * client wired up in this platform yet, so they continue to be read from
  * the same bundled fixture files. This keeps `live` mode runnable without
@@ -26,8 +26,8 @@ import {
   type Evidence,
   type JolpicaDriverStanding,
   type KalshiMarket,
-} from '@f1/contracts';
-import { getMarkets, type KalshiMode } from '@f1/kalshi';
+} from '@dop/contracts';
+import { getMarkets, type KalshiMode } from '@dop/kalshi';
 
 /** Fixed capture timestamp shared by every bundled fixture. */
 export const FIXTURE_CAPTURED_AT = '2026-07-07T00:00:00Z';

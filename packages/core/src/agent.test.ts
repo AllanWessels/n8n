@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { DecisionInput } from '@f1/contracts';
+import type { DecisionInput } from '@dop/contracts';
 import { assess } from './agent.js';
 import { StubLLM } from './ollama.js';
 

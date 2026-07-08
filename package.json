@@ -1,8 +1,8 @@
 {
-  "name": "f1-decision-platform",
+  "name": "decision-orchestration-platform",
   "version": "0.1.0",
   "private": true,
-  "description": "n8n-orchestrated, AI-enabled decision platform — F1/Kalshi betting-edge engine as the flagship instance of a reusable decision framework.",
+  "description": "Source-agnostic, n8n-orchestrated decision-automation platform: an AI-enabled, adversarially-governed decisioning framework with a prediction-market signal domain as its reference implementation.",
   "license": "MIT",
   "author": "Allan Wessels",
   "workspaces": [

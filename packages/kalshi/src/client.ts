@@ -1,5 +1,5 @@
 // Paper-only: order execution intentionally not implemented; this client is read-only.
-import { KalshiMarketSchema, type KalshiMarket } from '@f1/contracts';
+import { KalshiMarketSchema, type KalshiMarket } from '@dop/contracts';
 import { z } from 'zod';
 import { signKalshiRequest } from './signer.js';
 
@@ -26,7 +26,7 @@ export interface GetEventsParams {
 /**
  * Raw Kalshi market payload, as returned over the wire. Kalshi returns
  * `null` for `yes_bid`/`yes_ask` on markets with no current quotes (e.g.
- * off-season markets) — the shared `@f1/contracts` `KalshiMarketSchema`
+ * off-season markets) — the shared `@dop/contracts` `KalshiMarketSchema`
  * requires numbers, so this raw schema tolerates `null` and the values are
  * normalized to `0` before being handed to `KalshiMarketSchema`.
  */

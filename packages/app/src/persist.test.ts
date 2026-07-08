@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { DecisionRecord, Evidence } from '@f1/contracts';
+import type { DecisionRecord, Evidence } from '@dop/contracts';
 import { InMemoryDecisionStore } from './persist.js';
 
 function sampleRecord(id: string): DecisionRecord {

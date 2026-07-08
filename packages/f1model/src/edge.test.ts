@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { KalshiMarket, PolicyConfig } from '@f1/contracts';
+import type { KalshiMarket, PolicyConfig } from '@dop/contracts';
 import { computeEdge, decideAction, kellySize, DEFAULT_EDGE_POLICY } from './edge.js';
 
 function market(overrides: Partial<KalshiMarket> = {}): KalshiMarket {

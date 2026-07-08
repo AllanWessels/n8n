@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { AgentAssessment, Evidence, JudgeRubric } from '@f1/contracts';
+import type { AgentAssessment, Evidence, JudgeRubric } from '@dop/contracts';
 import { judge } from './judge.js';
 import { StubLLM } from './ollama.js';
 

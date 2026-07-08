@@ -1,5 +1,5 @@
-import type { AgentAssessment, Evidence, JudgeScore, JudgeVerdict } from '@f1/contracts';
-import { type JudgeRubric, weightedScore } from '@f1/contracts';
+import type { AgentAssessment, Evidence, JudgeScore, JudgeVerdict } from '@dop/contracts';
+import { type JudgeRubric, weightedScore } from '@dop/contracts';
 import type { LLM } from './ollama.js';
 import { clamp, extractFirstJsonObject } from './json.js';
 
