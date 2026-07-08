@@ -1,0 +1,65 @@
+[
+  {
+    "name": "jolpica_driver_standings",
+    "path": "fixtures/jolpica/driver_standings.json",
+    "source": "https://api.jolpi.ca/ergast/f1/2025/driverStandings.json",
+    "capturedAt": "2026-07-07T00:00:00Z",
+    "note": "Ergast-compatible F1 2025 season driver championship standings (Jolpica mirror). HTTP 200, full response captured verbatim."
+  },
+  {
+    "name": "jolpica_last_results",
+    "path": "fixtures/jolpica/last_results.json",
+    "source": "https://api.jolpi.ca/ergast/f1/2025/last/results.json",
+    "capturedAt": "2026-07-07T00:00:00Z",
+    "note": "Results of the most recently completed 2025-season race at capture time. HTTP 200, full response captured verbatim."
+  },
+  {
+    "name": "jolpica_constructor_standings",
+    "path": "fixtures/jolpica/constructor_standings.json",
+    "source": "https://api.jolpi.ca/ergast/f1/2025/constructorStandings.json",
+    "capturedAt": "2026-07-07T00:00:00Z",
+    "note": "Ergast-compatible F1 2025 season constructor championship standings (Jolpica mirror). HTTP 200, full response captured verbatim."
+  },
+  {
+    "name": "openf1_weather",
+    "path": "fixtures/openf1/weather.json",
+    "source": "https://api.openf1.org/v1/weather?session_key=9472",
+    "capturedAt": "2026-07-07T00:00:00Z",
+    "note": "Trackside weather telemetry for OpenF1 session_key=9472 (2024 Bahrain GP Race). Live response had 157 rows; truncated to the first 20 to bound fixture size."
+  },
+  {
+    "name": "openf1_sessions",
+    "path": "fixtures/openf1/sessions.json",
+    "source": "https://api.openf1.org/v1/sessions?year=2024&session_name=Race",
+    "capturedAt": "2026-07-07T00:00:00Z",
+    "note": "2024-season Race sessions with session_key/meeting_key/circuit metadata. Live response had 24 rows; truncated to the first 10 to bound fixture size."
+  },
+  {
+    "name": "openmeteo_silverstone_forecast",
+    "path": "fixtures/openmeteo/silverstone_forecast.json",
+    "source": "https://api.open-meteo.com/v1/forecast?latitude=52.07&longitude=-1.01&hourly=temperature_2m,precipitation_probability&forecast_days=3",
+    "capturedAt": "2026-07-07T00:00:00Z",
+    "note": "3-day hourly temperature and precipitation-probability forecast for Silverstone Circuit coordinates. HTTP 200, full response captured verbatim."
+  },
+  {
+    "name": "news_autosport_f1",
+    "path": "fixtures/news/autosport_f1.json",
+    "source": "https://www.autosport.com/rss/f1/news/",
+    "capturedAt": "2026-07-07T00:00:00Z",
+    "note": "First 15 items from the Autosport F1 news RSS feed, parsed from the raw XML into { title, link, isoDate, contentSnippet }. isoDate normalized to UTC ISO-8601 from the feed's RFC-822 pubDate. See fixtures/news/autosport_f1.raw.xml for the untouched source XML."
+  },
+  {
+    "name": "news_autosport_f1_raw",
+    "path": "fixtures/news/autosport_f1.raw.xml",
+    "source": "https://www.autosport.com/rss/f1/news/",
+    "capturedAt": "2026-07-07T00:00:00Z",
+    "note": "Raw, unmodified RSS XML as returned by Autosport. Source-of-truth for fixtures/news/autosport_f1.json."
+  },
+  {
+    "name": "kalshi_kxf1_markets",
+    "path": "fixtures/kalshi/kxf1_markets.json",
+    "source": "https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=KXF1&limit=25",
+    "capturedAt": "2026-07-07T00:00:00Z",
+    "note": "F1 2026 Drivers' Championship winner markets (event KXF1-26), 22 real tickers/titles/close_times/statuses. The API's cent-denominated yes_bid/yes_ask were null for every market at capture time (thin off-season book), so all 22 entries were demo-priced with plausible championship-odds cents and flagged _demo_priced: true. The live (near-zero/thin) yes_bid_dollars_live/yes_ask_dollars_live/liquidity_dollars_live fields are preserved alongside for provenance."
+  }
+]
