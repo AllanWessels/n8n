@@ -10,19 +10,23 @@
 ## Action items for you
 1. **n8n owner account — DONE.** The owner login on https://f1-n8n-4nbtikalia-uc.a.run.app is created
    (owner `j.allan.wessels@gmail.com`; password shared privately — change it in Settings → change password).
-   Remaining (couldn't be done from the assistant's sandbox — it blocks writes to the live instance): **import the
-   3 workflows** and set node credentials. Fastest path: log in → **Workflows → Import from File** → pick each of
-   `workflows/*.json`. Then set the credentials the nodes reference — Postgres (Cloud SQL), Ollama (the GPU ILB IP,
-   step 2), and the JWT webhook secret (already in Secret Manager as `f1-n8n-jwt-secret`).
-2. **GPU (L4) quota — GRANTED** (`NVIDIA_L4_GPUS: limit=1`, spot too, `us-central1`). `enable_gpu=true` is now set in
-   `infra/terraform/terraform.tfvars` and Terraform is initialized with a clean plan (**10 to add, 0 to destroy**).
-   Apply it to create the MIG (it starts at **min=0 → $0 idle**):
-   ```bash
-   terraform -chdir=infra/terraform apply   # review the plan, then approve
-   ```
-   Then `make gpu-up PROJECT_ID=f1-decision-platform REGION=us-central1` scales it to 1 for a demo, and the Ollama
-   credential URL in n8n is `http://<f1-ollama-ilb-ip>:11434` (`terraform output`). The **local** stack runs the full
-   AI pipeline with no GPU cost in the meantime.
+   Remaining: **import the 3 workflows** and set node credentials. Import is now programmatic (version-controlled,
+   no UI paste): `N8N_BASE=https://f1-n8n-4nbtikalia-uc.a.run.app N8N_EMAIL=... N8N_PASSWORD=... make import-workflows-remote`
+   (CD does this automatically once an `f1-n8n-api-key` secret exists). Then set the credentials the nodes reference —
+   Postgres (host `10.199.0.3`, db/user `n8n`, pw in Secret Manager `f1-db-password`), Ollama (`http://10.10.0.2:11434`),
+   and the JWT webhook secret (Secret Manager `f1-n8n-jwt-secret`).
+2. **GPU tier — APPLIED; one quota still pending.** `enable_gpu=true` and the whole Ollama GPU topology is now
+   **provisioned** (instance template, MIG `f1-ollama-mig` at size 0, autoscaler, internal LB `10.10.0.2`), and n8n's
+   `OLLAMA_BASE_URL` is auto-wired to `http://10.10.0.2:11434`. Fixing the apply surfaced four real IaC bugs (dead boot
+   image, regional-MIG update-policy rule, L4 zone availability, internal-LB balancing mode) — all committed.
+   - **Blocker:** GCP enforces *two* GPU quotas. The regional `NVIDIA_L4_GPUS` is granted (=1), but the global
+     **`GPUS_ALL_REGIONS` is still 0**, so every instance creation fails with `Quota 'GPUS_ALL_REGIONS' exceeded`.
+   - An increase request for `GPUS-ALL-REGIONS-per-project` → **4** has been **submitted** (Cloud Quotas, status
+     `reconciling`). Track it: Console → IAM & Admin → Quotas → filter "GPUs (all regions)". Same async grant as the
+     L4 one (minutes–a day).
+   - **Once granted:** `make gpu-up PROJECT_ID=f1-decision-platform REGION=us-central1` boots a spot L4 (verified the
+     instance *does* create once quota clears), pulls the Qwen models (~3-4 min), and the pipeline runs against the
+     cloud GPU. `make gpu-down` returns it to zero. The **local** stack runs the full AI pipeline in the meantime.
 3. **(Optional) live Kalshi** — market DATA is keyless (live prices work with no key). A key is only needed to
    demonstrate the (paper-only) trade path. To enable: `gcloud secrets versions add f1-kalshi-api-key-id ...` and
    `f1-kalshi-private-key ...`, then set `KALSHI_MODE=live`. Defaults to fixtures otherwise.
