@@ -93,6 +93,10 @@ import-workflows: ## Import workflows/*.json into n8n via its CLI
 	@echo "      log in at http://localhost:5678 and toggle 'Active', or call"
 	@echo "      POST /rest/workflows/:id/activate with a valid session/API key."
 
+import-workflows-remote: ## Import workflows/*.json into a REMOTE n8n over its API (idempotent). Needs N8N_BASE + (N8N_API_KEY | N8N_EMAIL+N8N_PASSWORD)
+	@echo "==> Importing ./workflows into $(N8N_BASE) via API..."
+	node scripts/import-workflows-remote.mjs
+
 seed: ## (Re)apply db/schema.sql to postgres — idempotent (CREATE TABLE IF NOT EXISTS)
 	@echo "==> Applying db/schema.sql to $(POSTGRES_CONTAINER)..."
 	docker exec -i $(POSTGRES_CONTAINER) psql -U $${DB_POSTGRESDB_USER:-n8n} -d $${DB_POSTGRESDB_DATABASE:-n8n} < db/schema.sql
@@ -129,17 +133,26 @@ deploy: ## Apply Terraform to the GCP project (infra/terraform)
 	@echo "==> Deploying via Terraform (PROJECT_ID=$(PROJECT_ID) REGION=$(REGION))..."
 	PROJECT_ID=$(PROJECT_ID) REGION=$(REGION) bash scripts/deploy.sh
 
-gpu-up: ## Scale the Ollama GPU MIG instance group up (requires PROJECT_ID, REGION)
-	@echo "==> Scaling Ollama GPU instance group up (PROJECT_ID=$(PROJECT_ID) REGION=$(REGION))..."
-	@echo "Requires env: PROJECT_ID, REGION, and an existing MIG named 'ollama-gpu-mig'."
-	gcloud compute instance-groups managed resize ollama-gpu-mig \
+gpu-up: ## Warm the Ollama GPU MIG to 1 for a demo (requires PROJECT_ID, REGION)
+	@echo "==> Warming Ollama GPU MIG (PROJECT_ID=$(PROJECT_ID) REGION=$(REGION))..."
+	# An autoscaled regional MIG rejects manual resize, and CPU-autoscaling can't
+	# scale up *from zero* with no running instance to read a metric from — so
+	# warming is an explicit op: turn the autoscaler off, then resize to 1.
+	gcloud compute instance-groups managed update-autoscaling f1-ollama-mig \
+		--project=$(PROJECT_ID) --region=$(REGION) --mode=off
+	gcloud compute instance-groups managed resize f1-ollama-mig \
 		--project=$(PROJECT_ID) --region=$(REGION) --size=1
+	@echo "==> Booting. First boot pulls the Qwen models (~3-4 min). Watch: make gpu-status"
 
-gpu-down: ## Scale the Ollama GPU MIG instance group down to zero (saves cost)
-	@echo "==> Scaling Ollama GPU instance group down (PROJECT_ID=$(PROJECT_ID) REGION=$(REGION))..."
-	@echo "Requires env: PROJECT_ID, REGION, and an existing MIG named 'ollama-gpu-mig'."
-	gcloud compute instance-groups managed resize ollama-gpu-mig \
+gpu-down: ## Scale the Ollama GPU MIG down to zero (saves cost)
+	@echo "==> Scaling Ollama GPU MIG to zero (PROJECT_ID=$(PROJECT_ID) REGION=$(REGION))..."
+	gcloud compute instance-groups managed resize f1-ollama-mig \
 		--project=$(PROJECT_ID) --region=$(REGION) --size=0
+
+gpu-status: ## Show the Ollama GPU MIG instance state + health (requires PROJECT_ID, REGION)
+	@gcloud compute instance-groups managed list-instances f1-ollama-mig \
+		--project=$(PROJECT_ID) --region=$(REGION) \
+		--format='table(instance.basename(),instanceStatus,currentAction)'
 
 destroy: ## Destroy all Terraform-managed GCP resources
 	@echo "==> Destroying Terraform-managed resources (PROJECT_ID=$(PROJECT_ID) REGION=$(REGION))..."
