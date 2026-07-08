@@ -22,7 +22,7 @@ variable "zone" {
 variable "n8n_image" {
   description = "Fully-qualified container image reference for the n8n Cloud Run service (e.g. us-central1-docker.pkg.dev/<project>/<repo>/n8n:latest). Defaults to the public n8n image so the plan is valid before a custom image has been pushed."
   type        = string
-  default     = "docker.n8n.io/n8nio/n8n:latest"
+  default     = "docker.io/n8nio/n8n:latest"
 }
 
 variable "ollama_gpu_type" {

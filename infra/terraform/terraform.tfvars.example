@@ -10,7 +10,7 @@ zone       = "us-central1-a"
 
 # Custom image pushed to Artifact Registry, e.g.:
 # "us-central1-docker.pkg.dev/f1-decision-platform-demo/f1-decision-platform/n8n:latest"
-n8n_image = "docker.n8n.io/n8nio/n8n:latest"
+n8n_image = "docker.io/n8nio/n8n:latest"
 
 ollama_gpu_type   = "nvidia-l4"
 enable_gpu        = true

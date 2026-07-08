@@ -45,3 +45,7 @@ ollama-data/
 tmp/
 .cache/
 docs/README.pdf
+
+# terraform plan output
+infra/terraform/tfplan
+tfplan
