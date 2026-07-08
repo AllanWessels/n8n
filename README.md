@@ -58,8 +58,8 @@ Every decision — regardless of domain — moves through the same seven stages,
 |---|---|---|
 | **1 · Ingest** | Pull every piece of relevant evidence from its system of record before forming an opinion | **Flagship:** 5 parallel HTTP/RSS calls (championship data, weather ×2, market-signal API, news), retried and merged into one bundle (`packages/app/src/evidence.ts`). **Framework:** a typed, Zod-validated `Evidence[]` contract (`packages/contracts/src/schemas.ts`). |
 | **2 · Enrich** | Turn raw evidence into a comparable, quantitative estimate | **Flagship:** softmax win-probability model + model-vs-market signal (`packages/f1model/src/{model,edge}.ts`). **Framework:** domain-supplied `context` on `DecisionInput`. |
-| **3 · AI agent** | Produce a structured, reasoned assessment instead of an opaque score | **Flagship:** local Qwen emits `{probability, reasoning, keyFactors}` from evidence only (`packages/core/src/agent.ts`). **Framework:** n8n **AI Agent: Analyst** + **Ollama Chat Model**. |
-| **4 · LLM-as-judge** *(responsible-AI gate)* | Independently check the AI's reasoning quality before it can move a real decision | **Flagship:** a second, independent Qwen scores the assessment 0–1 against a human-authored weighted rubric (`packages/core/src/judge.ts`, `packages/contracts/src/rubric.ts`). **Framework:** n8n **AI Agent: Judge**. |
+| **3 · AI agent** | Produce a structured, reasoned assessment instead of an opaque score | **Flagship:** local Qwen emits `{probability, reasoning, keyFactors}` from evidence only (`packages/core/src/agent.ts`). **Framework:** n8n **AI Agent: Analyst** + its **Ollama Chat Model (Analyst)**. |
+| **4 · LLM-as-judge** *(responsible-AI gate)* | Independently check the AI's reasoning quality before it can move a real decision | **Flagship:** a second, independent Qwen scores the assessment 0–1 against a human-authored weighted rubric (`packages/core/src/judge.ts`, `packages/contracts/src/rubric.ts`). **Framework:** n8n **AI Agent: Judge (rubric)** + its own **Ollama Chat Model (Judge)**. |
 | **5 · Guardrail / policy gate** | Enforce business policy deterministically, independent of what the AI concluded | **Flagship:** pre-assessment fast-fail + post-assessment policy check (`packages/core/src/guardrail.ts`). **Framework:** n8n **Code: Guardrail + Policy Gate**. |
 | **6 · Decision record** | Produce an immutable, schema-checked artifact that can be replayed or audited later | **Flagship:** Zod-validated immutable record (`packages/core/src/decision.ts` + `DecisionRecordSchema`). **Framework:** n8n **If: Approved?** → **Decision** nodes. |
 | **7 · Action** | Turn a governed decision into a recommendation a downstream system or human can act on | **Flagship:** act / hold / decline + half-Kelly sizing, written to the `decision_ledger` table and returned via the webhook (`packages/app/src/persist.ts`, `db/schema.sql`). **Framework:** returns the governed decision; the caller defines what "action" means. |
@@ -74,7 +74,7 @@ Below is real, reproducible output from `node packages/app/dist/cli.js --mode fi
 SUBJECT                                                MODEL  MARKET  SIGNAL  ACTION  JUDGE  STATUS
 Will Oscar Piastri win the F1 Drivers Championship?    0.183  0.235   -0.052  PASS    pass   approved
 Will Max Verstappen win the F1 Drivers Championship?   0.121  0.315   -0.194  PASS    pass   approved
-Will Lando Norris win the F1 Drivers Championship?     0.200  0.135   +0.065  BUY     pass   approved
+Will Lando Norris win the F1 Drivers Championship?     0.200  0.135   0.065   BUY     pass   approved
 ```
 
 Read this as a business decision example: for each candidate, the system's model estimates a probability (`MODEL`) and compares it against an external market-implied probability (`MARKET`) — the gap between the two is the decision **signal**. For Norris, the softmax model (`packages/f1model/src/model.ts`) estimates a **0.200** win probability, but the external market-signal source implies only **0.135** — a **+0.065 signal** that clears the policy's `minEdge` (0.05) and `minConfidence` (0.55) thresholds (`packages/f1model/src/edge.ts:decideAction`), so the governed recommendation is **act** (`BUY` in the raw output — see [Terminology note](#a-note-on-the-action-codes) below). Piastri's and Verstappen's signals are negative — the market already prices them higher than the model does — so the system correctly recommends **decline** (`PASS`). In every row, an independent adversarial judge scored the reasoning `pass`, the policy gate approved it, and the outcome was written to the auditable `decision_ledger` as `status: approved`.
@@ -87,7 +87,7 @@ The pipeline's code and raw CLI output use the short codes `BUY` / `HOLD` / `PAS
 
 ![Platform architecture — decision-orchestration-platform on GCP](docs/img/architecture.png)
 
-Deployed live to a GCP project (`infra/terraform/`) provisioned for this platform. n8n runs on Cloud Run and the Ollama GPU MIG is `terraform apply`-ed (instance template, autoscaler, internal load balancer; n8n auto-wired to it) — it idles at zero and warms on demand (see [Deploy to GCP](#deploy-to-gcp) and `BLOCKERS.md`).
+Deployed live to a GCP project (`infra/terraform/`) provisioned for this platform. n8n runs on Cloud Run and the Ollama GPU MIG is `terraform apply`-ed (instance template, autoscaler, internal load balancer; n8n auto-wired to it) and idles at zero; warming it to 1 is pending a global `GPUS_ALL_REGIONS` quota grant (see [Deploy to GCP](#deploy-to-gcp) and `BLOCKERS.md`).
 
 ## Testing & Quality Harness
 
@@ -118,7 +118,7 @@ npm run test:cov     # vitest run --coverage — fails the process if under thre
 make test-cov        # same, via the Makefile
 ```
 
-### CI: 6 layered gates on every PR (`.github/workflows/ci.yml`)
+### CI: 5 layered gates on every PR (`.github/workflows/ci.yml`)
 
 | Gate | What it checks | Blocking |
 |---|---|---|
@@ -164,7 +164,7 @@ make deploy          # terraform init + apply (infra/terraform/)
 ```
 
 - **Scale-to-zero by default**: `min_instances=0` on the n8n Cloud Run service (`infra/terraform/variables.tf`) — idle cost is near-zero.
-- **GPU inference tier scales to zero**: `enable_gpu=true` (the default) provisions the spot **L4** Ollama MIG behind an internal load balancer, autoscaling **0→2** and sitting at **zero when idle** — so it costs nothing until a run warms it. L4 quota is granted on the deployed project, so `make deploy` brings the tier up; `make gpu-up` (or the warm-up workflow) scales it to 1 before a demo and `make gpu-down` returns it to zero. Set `enable_gpu=false` for a CPU-only demo.
+- **GPU inference tier scales to zero**: `enable_gpu=true` (the default) provisions the spot **L4** Ollama MIG behind an internal load balancer, autoscaling **0→2** and sitting at **zero when idle** — so it costs nothing until a run warms it. On the live project the topology is `terraform apply`-ed and idles at zero; warming to 1 (`make gpu-up` / the warm-up workflow) is pending a global `GPUS_ALL_REGIONS` quota grant (the regional L4 quota is already granted — see `BLOCKERS.md`), and the local Ollama stack runs the full pipeline in the meantime. Set `enable_gpu=false` for a CPU-only demo.
 - **CD is opt-in**: `.github/workflows/cd.yml` deploys on push to `main` via Workload Identity Federation (no long-lived GCP keys), but only runs when the `ENABLE_CD` repo variable is `true` — a deliberate safety gate documented in `.github/workflows/README.md`.
 
 ## Running it

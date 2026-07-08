@@ -117,7 +117,7 @@ function formatRow(cols: string[], widths: number[]): string {
 }
 
 function printSummary(records: DecisionRecord[]): void {
-  const headers = ['SUBJECT', 'MODEL', 'MARKET', 'EDGE', 'ACTION', 'JUDGE', 'STATUS'];
+  const headers = ['SUBJECT', 'MODEL', 'MARKET', 'SIGNAL', 'ACTION', 'JUDGE', 'STATUS'];
   const rows = records.map((r) => {
     const modelProb = r.edge ? r.edge.modelProb.toFixed(3) : r.assessment.probability.toFixed(3);
     const marketProb = r.edge && Number.isFinite(r.edge.marketProb) ? r.edge.marketProb.toFixed(3) : 'n/a';
