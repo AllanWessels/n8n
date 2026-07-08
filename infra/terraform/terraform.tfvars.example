@@ -1,0 +1,26 @@
+# =============================================================================
+# terraform.tfvars.example — copy to terraform.tfvars and fill in real values
+# =============================================================================
+# NEVER commit terraform.tfvars (or any file with real values) — it is
+# gitignored. This file contains placeholders only, no secrets.
+
+project_id = "f1-decision-platform-demo" # GCP project created by the bootstrap script
+region     = "us-central1"
+zone       = "us-central1-a"
+
+# Custom image pushed to Artifact Registry, e.g.:
+# "us-central1-docker.pkg.dev/f1-decision-platform-demo/f1-decision-platform/n8n:latest"
+n8n_image = "docker.n8n.io/n8nio/n8n:latest"
+
+ollama_gpu_type   = "nvidia-l4"
+enable_gpu        = true
+enable_queue_mode = false
+
+# "owner/name" — the GitHub repository allowed to deploy via Workload
+# Identity Federation.
+github_repo = "your-github-org/f1-decision-platform"
+
+db_tier       = "db-f1-micro"
+min_instances = 0
+max_instances = 4
+n8n_public    = true
