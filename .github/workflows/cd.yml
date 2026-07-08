@@ -1,0 +1,95 @@
+name: CD
+
+# Deploys to GCP on push to main. Disabled by default — see the `ENABLE_CD`
+# repository variable guard on the `deploy` job below. Also runnable manually
+# via workflow_dispatch once enabled.
+#
+# Required repository SECRETS (Settings -> Secrets and variables -> Actions -> Secrets):
+#   GCP_WIF_PROVIDER   - full resource name of the Workload Identity Federation
+#                        provider, e.g.
+#                        projects/123456789/locations/global/workloadIdentityPools/POOL/providers/PROVIDER
+#   GCP_DEPLOY_SA       - email of the GCP service account to impersonate, e.g.
+#                        deployer@PROJECT_ID.iam.gserviceaccount.com
+#   GCP_PROJECT_ID      - target GCP project id (passed to terraform as -var project_id)
+#   GCP_TFSTATE_BUCKET  - GCS bucket name used as the Terraform remote state backend
+#
+# Required repository VARIABLES (Settings -> Secrets and variables -> Actions -> Variables):
+#   ENABLE_CD           - must be the literal string "true" to allow this workflow's
+#                          `deploy` job to run. Defaults to unset/false, i.e. a safe no-op,
+#                          until Allan explicitly opts in.
+#
+# No long-lived GCP JSON keys are used — auth is via Workload Identity Federation
+# (google-github-actions/auth), which exchanges the workflow's OIDC token for
+# short-lived GCP credentials.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    name: Build image + terraform apply
+    runs-on: ubuntu-latest
+    # No-op until the repository variable ENABLE_CD is explicitly set to "true".
+    if: ${{ vars.ENABLE_CD == 'true' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Authenticate to GCP via Workload Identity Federation
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SA }}
+
+      - name: Set up gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker --quiet
+
+      - name: Check for custom n8n Dockerfile
+        id: dockerfile-check
+        run: |
+          if [ -f "docker/n8n.Dockerfile" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::docker/n8n.Dockerfile not found — skipping custom image build; deployment will reference the upstream n8n image."
+          fi
+
+      - name: Build & push custom n8n image
+        if: steps.dockerfile-check.outputs.exists == 'true'
+        env:
+          IMAGE: us-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/f1-decision-platform/n8n
+        run: |
+          docker build -f docker/n8n.Dockerfile -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:latest" .
+          docker push "$IMAGE:${{ github.sha }}"
+          docker push "$IMAGE:latest"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform init (GCS backend)
+        run: |
+          terraform -chdir=infra/terraform init \
+            -backend-config="bucket=${{ secrets.GCP_TFSTATE_BUCKET }}" \
+            -backend-config="prefix=f1-decision-platform/state"
+
+      - name: Terraform apply
+        run: |
+          terraform -chdir=infra/terraform apply -auto-approve \
+            -var "project_id=${{ secrets.GCP_PROJECT_ID }}"
