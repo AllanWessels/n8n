@@ -36,6 +36,9 @@ n8n-data/
 postgres-data/
 ollama-data/
 
+# --- local Claude Code config / build-agent worktrees (not shipped) ---
+.claude/
+
 # --- misc ---
 .DS_Store
 *.log

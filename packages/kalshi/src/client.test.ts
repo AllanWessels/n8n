@@ -80,12 +80,13 @@ describe('KalshiClient.getMarkets', () => {
     expect(kalshiImpliedProb(ver)).toBeCloseTo(0.42);
     expect(kalshiImpliedProb(ham)).toBeCloseTo(0.135);
 
-    // The off-season market had null yes_bid/yes_ask on the wire; the
-    // client normalizes them to 0 so the shared KalshiMarketSchema (which
-    // requires numbers) still validates it.
-    expect(offSeason.yes_bid).toBe(0);
-    expect(offSeason.yes_ask).toBe(0);
-    expect(kalshiImpliedProb(offSeason)).toBe(0);
+    // The off-season market had null yes_bid/yes_ask on the wire; the client
+    // preserves them as null (the shared KalshiMarketSchema is nullable) so
+    // that kalshiImpliedProb returns NaN and downstream logic HOLDs instead
+    // of inferring a false 0% price.
+    expect(offSeason.yes_bid).toBeNull();
+    expect(offSeason.yes_ask).toBeNull();
+    expect(kalshiImpliedProb(offSeason)).toBeNaN();
 
     // Verify the request URL included the query params and hit the default base URL.
     const call = fetchMock.mock.calls[0] as FetchArgs;

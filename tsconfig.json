@@ -1,1 +1,9 @@
-{ "files": [], "references": [{ "path": "packages/contracts" }] }
+{
+  "files": [],
+  "references": [
+    { "path": "packages/contracts" },
+    { "path": "packages/kalshi" },
+    { "path": "packages/f1model" },
+    { "path": "packages/core" }
+  ]
+}

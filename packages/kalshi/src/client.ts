@@ -64,12 +64,17 @@ const RawKalshiOrderbookSchema = z.object({
 });
 export type KalshiOrderbook = z.infer<typeof RawKalshiOrderbookSchema>;
 
-/** Normalizes a raw wire market (nullable quotes) into the shared `KalshiMarket` contract type. */
+/**
+ * Normalizes a raw wire market into the shared `KalshiMarket` contract type.
+ * `yes_bid`/`yes_ask` are preserved as `null` when the market has no live
+ * quote (the contract schema is nullable) so that `kalshiImpliedProb` returns
+ * `NaN` and downstream logic HOLDs, rather than inferring a false 0% price.
+ */
 function normalizeMarket(raw: z.infer<typeof RawKalshiMarketSchema>): KalshiMarket {
   return KalshiMarketSchema.parse({
     ...raw,
-    yes_bid: raw.yes_bid ?? 0,
-    yes_ask: raw.yes_ask ?? 0,
+    yes_bid: raw.yes_bid ?? null,
+    yes_ask: raw.yes_ask ?? null,
   });
 }
 

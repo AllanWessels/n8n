@@ -15,10 +15,10 @@ import { z } from 'zod';
 export const KalshiMarketSchema = z.object({
   ticker: z.string(),
   title: z.string(),
-  /** Best yes bid, in cents (0-100). */
-  yes_bid: z.number(),
-  /** Best yes ask, in cents (0-100). */
-  yes_ask: z.number(),
+  /** Best yes bid, in cents (0-100). `null` when the market has no live quote (e.g. off-season). */
+  yes_bid: z.number().nullable(),
+  /** Best yes ask, in cents (0-100). `null` when the market has no live quote. */
+  yes_ask: z.number().nullable(),
   last_price: z.number().nullable().optional(),
   volume: z.number().optional(),
   status: z.string(),
@@ -31,8 +31,13 @@ export type KalshiMarket = z.infer<typeof KalshiMarketSchema>;
  * mid of the bid/ask spread. Kalshi quotes prices in cents (0-100), so the
  * mid is divided by 100 to yield a probability, then clamped to [0, 1] to
  * guard against malformed/out-of-range upstream data.
+ *
+ * Returns `NaN` when either side has no live quote (`null`), signalling
+ * "no market price" so downstream logic holds rather than inferring a 0%
+ * probability. Callers should test with `Number.isFinite(...)`.
  */
 export function kalshiImpliedProb(m: Pick<KalshiMarket, 'yes_bid' | 'yes_ask'>): number {
+  if (m.yes_bid == null || m.yes_ask == null) return NaN;
   const mid = (m.yes_bid + m.yes_ask) / 2 / 100;
   return Math.min(1, Math.max(0, mid));
 }
