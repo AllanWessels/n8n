@@ -1,0 +1,12 @@
+# Auto-load every dashboard JSON mounted at /etc/grafana/dashboards.
+apiVersion: 1
+providers:
+  - name: Decision dashboards
+    orgId: 1
+    type: file
+    disableDeletion: true
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/dashboards
+      foldersFromFilesStructure: false

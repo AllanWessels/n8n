@@ -1,0 +1,19 @@
+# Grafana datasource: the same Postgres that holds the decision_ledger.
+# Values are interpolated from the grafana container's environment (set in
+# docker-compose.yml), so no secrets live in this file.
+apiVersion: 1
+datasources:
+  - name: Decision Postgres
+    uid: decision-postgres
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    user: $DB_POSTGRESDB_USER
+    jsonData:
+      database: $DB_POSTGRESDB_DATABASE
+      sslmode: disable
+      postgresVersion: 1600
+    secureJsonData:
+      password: $DB_POSTGRESDB_PASSWORD
+    isDefault: true
+    editable: false

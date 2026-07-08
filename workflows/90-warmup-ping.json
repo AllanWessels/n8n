@@ -4,7 +4,7 @@
     {
       "parameters": {
         "content": "## GPU Warm-up Ping\nCold-start mitigation: pings the local Ollama server's `/api/tags` before the flagship pipeline needs it, so the first real inference in `10-f1-edge-flagship.json` doesn't pay a multi-minute model-load penalty. Polls until the target model is loaded, then reports warm.",
-        "height": 560,
+        "height": 680,
         "width": 1080
       },
       "id": "e820422e-eac1-4943-a2b2-2355c0f10483",

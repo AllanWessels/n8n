@@ -28,6 +28,9 @@ const ctx = await browser.newContext({
   viewport: { width: 2200, height: 1400 },
   deviceScaleFactor: 2,
 });
+// Use n8n's real dark theme so node cards render dark (low-contrast, cohesive
+// with the Architecture figure) and labels are light — set before the app boots.
+await ctx.addInitScript(() => { try { localStorage.setItem('N8N_THEME', 'dark'); } catch { /* ignore */ } });
 
 // Authenticate via REST; cookies land in the shared context jar.
 const login = await ctx.request.post(`${BASE}/rest/login`, {
@@ -58,18 +61,26 @@ for (const [id, out, label] of TARGETS) {
   await page.waitForSelector('.vue-flow__node', { timeout: 30000 });
   await page.waitForTimeout(1500);
 
-  // Theme the canvas for the README: black backdrop (instead of the default
-  // light grid) and bright-green 50%-opacity sticky-note panels (instead of
-  // yellow). Node cards are left as-is so they pop on black.
+  // Theme the canvas to match docs/img/architecture.html: a navy gradient
+  // backdrop and translucent navy stage panels (instead of n8n's default sticky
+  // colour). Dark mode already handles the node cards + light labels, so we only
+  // restyle the background and the sticky-note group panels here.
   await page.addStyleTag({ content: `
-    .vue-flow__background { background:#000 !important; }
-    .vue-flow__background circle { fill:#2f2f2f !important; }
-    .vue-flow__node [class*="sticky"] {
-      background: rgba(74,222,128,0.5) !important;
-      border-color: rgba(74,222,128,0.9) !important;
+    .vue-flow__background {
+      background:
+        radial-gradient(1200px 500px at 20% -10%, rgba(59,130,246,.16), transparent 60%),
+        radial-gradient(1000px 500px at 95% 5%, rgba(167,139,250,.14), transparent 55%),
+        linear-gradient(180deg,#0b1220 0%, #0a0f1a 100%) !important;
     }
-    /* nested sticky layers must be transparent so the green isn't doubled */
-    .vue-flow__node [class*="sticky"] [class*="sticky"] { background: transparent !important; }
+    .vue-flow__background circle { fill: rgba(255,255,255,0.05) !important; }
+    .vue-flow__node [class*="sticky"] {
+      background: linear-gradient(180deg, rgba(30,43,64,.60), rgba(17,26,43,.50)) !important;
+      border: 1px solid #26406b !important;
+      border-radius: 16px !important;
+      box-shadow: 0 10px 30px rgba(0,0,0,.35) !important;
+    }
+    /* nested sticky layers transparent so the panel fill isn't doubled */
+    .vue-flow__node [class*="sticky"] [class*="sticky"] { background: transparent !important; box-shadow:none !important; }
   ` });
   await page.waitForTimeout(250);
 
