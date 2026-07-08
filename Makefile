@@ -28,6 +28,16 @@ include .env
 export
 endif
 
+# --- host-side Ollama URL --------------------------------------------------
+# Host processes (e.g. `make e2e`) reach Ollama over its PUBLISHED port on
+# localhost. This is deliberately NOT the container-internal OLLAMA_BASE_URL
+# (http://ollama:11434 from .env), which only resolves inside the compose
+# network — using it from the host fails DNS with "fetch failed". Defaults to
+# the compose publish port; override OLLAMA_PORT if you remapped it, or set
+# OLLAMA_HOST_URL directly to point at any reachable Ollama.
+OLLAMA_PORT     ?= 11434
+OLLAMA_HOST_URL ?= http://localhost:$(OLLAMA_PORT)
+
 help: ## Show this help
 	@echo "f1-decision-platform — available targets:"
 	@echo
@@ -102,10 +112,10 @@ seed: ## (Re)apply db/schema.sql to postgres — idempotent (CREATE TABLE IF NOT
 	docker exec -i $(POSTGRES_CONTAINER) psql -U $${DB_POSTGRESDB_USER:-n8n} -d $${DB_POSTGRESDB_DATABASE:-n8n} < db/schema.sql
 	@echo "==> Schema applied."
 
-e2e: ## Run the end-to-end decision-pipeline script (placeholder until wired)
+e2e: ## Run the end-to-end decision-pipeline script against a host-reachable Ollama ($(OLLAMA_HOST_URL))
 	@if [ -f scripts/run-decision.mjs ]; then \
-		echo "==> Running scripts/run-decision.mjs..."; \
-		node scripts/run-decision.mjs; \
+		echo "==> Running scripts/run-decision.mjs (Ollama: $(OLLAMA_HOST_URL))..."; \
+		node scripts/run-decision.mjs --ollama-url $(OLLAMA_HOST_URL); \
 	else \
 		echo "run-decision not yet wired (scripts/run-decision.mjs is missing) — skipping."; \
 		exit 0; \
