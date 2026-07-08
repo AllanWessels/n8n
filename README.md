@@ -3,39 +3,85 @@
   <img src="https://img.shields.io/badge/coverage-93.6%25%20stmts%20(v8)-brightgreen" alt="93.6% statement coverage" />
   <img src="https://img.shields.io/badge/orchestration-n8n-EA4B71" alt="Orchestrated by n8n" />
   <img src="https://img.shields.io/badge/AI-local%20Qwen%20via%20Ollama-orange" alt="Local Qwen via Ollama" />
+  <img src="https://img.shields.io/badge/API--first-OpenAI--compatible-6366F1" alt="API-first, OpenAI-compatible LLM interface" />
   <img src="https://img.shields.io/badge/IaC-Terraform%20%2F%20GCP-7B42BC" alt="Terraform on GCP" />
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License" />
 </p>
 
-# f1-decision-platform
+# Decision Orchestration Platform
 
-**A reusable, domain-agnostic decision framework — `ingest → enrich → AI agent → LLM-as-judge → guardrail/policy gate → decision record → action` — orchestrated entirely in [n8n](https://n8n.io), instantiated as a flagship F1 / Kalshi prediction-market betting-edge engine.**
+**A source-agnostic, `n8n`-orchestrated platform for scalable, secure, resilient, AI-enabled decision automation.**
 
-The flagship instance ingests live F1 championship data, weather, and news, computes each driver's win probability with a transparent softmax model, compares it against [Kalshi](https://kalshi.com) prediction-market prices to find a betting **edge**, hands the evidence to a **local LLM agent** (Qwen, via Ollama — no external AI API, ever) for a reasoned probability assessment, submits that assessment to an **adversarial LLM-as-judge** scored against a rubric, applies a **governance/policy gate**, and writes an auditable, paper-trade-only decision to a Postgres ledger exposed over the n8n public API. Everything — triggers, HTTP calls, the AI agent, the judge, the database write — runs as nodes in an inspectable n8n workflow graph, not hidden application code.
+This repository is a reference build of an enterprise decisioning platform — the kind of standard an automation/platform team would adopt so that every business function stops reinventing "gather evidence, get an AI opinion, have it checked, apply policy, log it, act" from scratch. The core is [n8n](https://n8n.io) as the orchestration engine: every trigger, HTTP call, AI agent invocation, judge call, and database write is a node in an inspectable, versioned n8n workflow graph — not logic buried in application code that only engineers can read. Around that core sit the platform standards enterprises actually need before they'll trust automation with real decisions: API-first and event-driven integration (REST, webhooks, OAuth/JWT), a layered CI/CD gate (build, lint, test-with-coverage, artifact validation, Terraform validation, secret scanning, and an adversarial AI code reviewer), infrastructure-as-code on GCP with a scale-to-zero cost model, observability (structured logging, a Cloud Monitoring dashboard, alert policies), and governance (an auditable decision ledger, least-privilege IAM, policy guardrails that gate every AI-produced recommendation before it can take effect).
 
-The framework itself (`packages/core` + `workflows/00-decision-framework.json`) has no F1-specific logic. Swap the evidence sources and the domain prompt and it becomes a decision engine for anything else that fits the same shape: evidence in, calibrated probability out, adversarially reviewed, policy-gated, and logged.
+The AI layer is deliberately **local-first but API-first**: a local LLM agent (Qwen, via [Ollama](https://ollama.com)) does the reasoning and judging by default, which keeps the platform cheap to run and keeps sensitive evidence off third-party infrastructure. But the agent talks to any OpenAI-compatible `/v1/chat/completions` endpoint (`packages/core/src/ollama.ts:OllamaClient`), so swapping in a hosted frontier model for a higher-stakes decision domain is one credential and one config value away — not a rewrite. That's the responsible-AI story in practice: run the cheap, private model by default, escalate to a stronger one deliberately, and keep the same guardrail/judge/policy layer around either.
 
-## What it does — the money-shot example
+The **evidence sources and the F1/prediction-market domain in this build are a reference implementation, not the point.** The reusable core — `packages/core` plus `workflows/00-decision-framework.json` — has zero F1-specific logic: it takes an `Evidence[]` bundle and a subject, produces an AI assessment, has an independent AI judge score that assessment against a rubric, applies a policy gate, and returns a governed decision record. Point the same core at a different set of evidence adapters and a different domain prompt and it decides for a different business problem entirely — for example: **credit/risk underwriting** (financial evidence in, approve/decline/refer recommendation out), **insurance claims triage** (claim documents + policy data in, fast-track/investigate recommendation out), **supplier selection** (RFP responses + compliance data in, award/reject recommendation out), **content moderation** (submitted content + policy rules in, allow/escalate/remove recommendation out), or **operations routing** (incident/ticket evidence in, team/priority assignment out). Swapping domains means swapping the ingest nodes and the prompt — the orchestration graph, the judge, the guardrail, and the governance ledger stay exactly the same.
 
-Below is the **actual, unedited** output of `node packages/app/dist/cli.js --mode fixture --stub --limit 9`, run against the real captured fixtures in this repo (deterministic `StubLLM`, no GPU needed):
+## Attribute → implementation matrix
+
+| # | Attribute | Implementation (real paths) |
+|---|---|---|
+| 2.1 | **Scalable** | Cloud Run `min_instance_count=0` scale-to-zero (`infra/terraform/cloudrun_n8n.tf`); Ollama GPU MIG autoscale 0→2 (`infra/terraform/ollama_gpu.tf`); toggleable queue-mode Redis + `n8n worker` service for horizontal scaling (`infra/terraform/queue_mode.tf`, `enable_queue_mode`) |
+| 2.2 | **Secure integration — OAuth/JWT + webhooks** | n8n JWT-authenticated `Webhook (JWT)` trigger in the flagship workflow (`workflows/10-f1-edge-flagship.json`); secrets in Secret Manager (`infra/terraform/secrets.tf`); keyless CI/CD via Workload Identity Federation (`infra/terraform/wif.tf`); RSA-PSS-signed requests to the external market-signal API (`packages/kalshi/src/signer.ts`) |
+| 2.3 | **Resilient** | `options.retry` (3 retries) on every ingest `HTTP Request` node in the flagship workflow; n8n's own execution error handling; Postgres persistence of every run/evidence/decision (`db/schema.sql`); Cloud Run + MIG auto-heal via health/liveness probes; Pub/Sub dead-letter topic + subscription (`infra/terraform/pubsub.tf`) |
+| 2.4 | **AI-enabled** | n8n `AI Agent` + `lmChatOllama` nodes calling a local LLM (`workflows/00-decision-framework.json`); TypeScript mirror in `packages/core/src/agent.ts` + `judge.ts`; local by default, one config value from a hosted frontier model via the same OpenAI-compatible interface |
+| 2.5 | **Multi-function decisioning framework** | `packages/core` (agent/judge/guardrail/decision, domain-agnostic) + `workflows/00-decision-framework.json` (the reusable sub-workflow, zero domain-specific logic) — see [Introduction](#decision-orchestration-platform) for example domains beyond the F1 reference build |
+| 2.6 | **API-first / REST** | n8n's own REST/public API surface; the flagship workflow's `Respond to Webhook` node returns the decision as JSON to any caller |
+| 2.7 | **Event-driven** | 3 trigger types on the flagship workflow (`Webhook`, `Schedule Trigger`, `Manual Trigger`); `90-warmup-ping.json` on a 15-minute schedule; Pub/Sub `decisions` topic (`infra/terraform/pubsub.tf`) |
+| 2.8 | **Connects enterprise systems, automation platforms, and AI services** | External market-signal API, championship-data API, weather APIs, news RSS, Ollama, Postgres, Pub/Sub — 8 distinct systems wired together in one workflow graph, each behind a typed adapter (see [Data sources](#data-sources)) |
+| 2.9.1 | **Development standard** | TDD with an enforced 80%-lines/80%-functions/75%-branches/80%-statements coverage gate (`vitest.config.ts`, `.github/workflows/ci.yml`); Ollama-Qwen adversarial CI code reviewer (`scripts/ci/ai-review.mjs`); workflow JSON validated against n8n's own node schemas by importing into a live n8n instance, and compatible with the **n8n-mcp** toolchain (programmatic node discovery / workflow-JSON validation) and **n8n-skills** for AI-assisted authoring |
+| 2.9.2 / 2.9.6 | **Deployment / environment strategy** | Terraform → GCP (`infra/terraform/`), GitHub Actions CD gated behind `ENABLE_CD` repo variable + WIF (`.github/workflows/cd.yml`); `.env.example` documents every runtime var; `enable_gpu`/`enable_queue_mode`/`n8n_public` toggles for cost/topology tradeoffs (`infra/terraform/variables.tf`) |
+| 2.9.3 / 2.9.8 | **Monitoring / observability** | Cloud Monitoring dashboard (`infra/terraform/dashboards/n8n-overview.json`, wired via `infra/terraform/monitoring.tf`), a log-based metric on `decision_logged` events, and a 5xx-error-rate alert policy |
+| 2.9.4 | **Reliability** | Cloud SQL Postgres (`infra/terraform/cloudsql.tf`) as the durable store for both n8n's own state and the decision ledger; `decision_runs`/`evidence_snapshots`/`decision_ledger` tables persist full provenance for replay (`db/schema.sql`) |
+| 2.9.5 | **Governance** | Guardrail + policy gate (`packages/core/src/guardrail.ts`), auditable decision ledger with `policy_violations`/`rationale`/`raw` columns (`db/schema.sql`), least-privilege IAM (`infra/terraform/iam.tf`, `wif.tf`), all secrets in Secret Manager (never in code or workflow JSON) |
+| 2.9.7 | **Reusable frameworks / templates / prompt patterns** | `workflows/00-decision-framework.json` (the callable sub-workflow) + the agent/judge prompt-building functions in `packages/core/src/agent.ts:buildPrompt` and `packages/core/src/judge.ts:buildPrompt`, parameterized entirely by evidence/rubric — no domain-specific strings |
+| 2.9.9 | **Cloud (GCP)** | Cloud Run (containers) + Docker (`docker-compose.yml` locally, upstream `n8nio/n8n` image in prod) + Ollama on a GCP GPU MIG (`infra/terraform/ollama_gpu.tf`) |
+
+## The n8n workflow graph
+
+The workflow graph *is* the platform's logic surface — triggers, HTTP calls, the AI agent, the judge, and the database write all run as nodes on a canvas that a non-engineer can open, read, and reason about. The screenshots below are the real, importable workflows in `workflows/` (`make import-workflows` loads them into a running n8n instance).
+
+![Flagship decision workflow](docs/img/n8n-flagship.png)
+
+> **`00-decision-framework` — the domain-agnostic decision core**, highlighted because it's the reusable part of this platform. 9 executable nodes: agent → judge → guardrail/policy gate → decision. It has no F1-specific logic at all — swap the evidence sources and the domain prompt feeding it, and it decides for any domain (see the example domains in the [Introduction](#decision-orchestration-platform)).
+
+![Reusable decision framework](docs/img/n8n-framework.png)
+
+Mermaid source for both graphs lives in `docs/img/*.mmd`, generated straight from the workflow JSON by `scripts/export-graph.mjs`; `make graph` regenerates them. A third workflow, `workflows/90-warmup-ping.json` (6 nodes), polls Ollama and pre-warms the model on a schedule so the first Agent/Judge call of a session doesn't eat a multi-minute cold-load penalty — see `workflows/README.md` for the full annotated walkthrough of every node.
+
+## The decision pipeline, explained
+
+Every decision — regardless of domain — moves through the same seven stages, implemented once in `packages/core` and mirrored 1:1 as n8n nodes in `workflows/00-decision-framework.json` + `workflows/10-f1-edge-flagship.json`. The business point of this structure: **the policy thresholds, the judge's rubric, the guardrail rules, and the workflow graph itself are all data and configuration, not compiled application code.** An analyst or risk owner can open the n8n canvas, change a threshold in `.env`, or edit the rubric weights in `packages/contracts/src/rubric.ts` without a developer touching a compiler — the logic that governs a decision is owned by the business, not hidden inside a binary.
+
+| # | Stage | Business purpose | Flagship implementation | Framework implementation |
+|---|---|---|---|---|
+| 1 | **Ingest** | Pull every piece of relevant evidence from its system of record before forming an opinion | 5 parallel HTTP/RSS calls (championship data, weather x2, market-signal API, news) with retry, merged into one evidence bundle — `packages/app/src/evidence.ts:gatherEvidence` | `Evidence[]` contract, `packages/contracts/src/schemas.ts` (Zod-validated on the way in) |
+| 2 | **Enrich** | Turn raw evidence into a comparable, quantitative estimate | Softmax win-probability model + model-vs-market signal calculation — `packages/f1model/src/model.ts`, `packages/f1model/src/edge.ts` | domain-supplied `context` on `DecisionInput` |
+| 3 | **AI agent** | Produce a structured, reasoned assessment instead of an opaque score | Local Qwen produces a structured `{probability, reasoning, keyFactors}` from evidence only — `packages/core/src/agent.ts:assess` | n8n **AI Agent: Analyst** node + **Ollama Chat Model** |
+| 4 | **LLM-as-judge (responsible-AI gate)** | Independently check the AI's reasoning quality before it can influence a real decision | A second, independent local Qwen call scores the assessment 0–1 against a human-authored, weighted rubric — `packages/core/src/judge.ts:judge`, rubric in `packages/contracts/src/rubric.ts` | n8n **AI Agent: Judge (rubric)** node + its own **Ollama Chat Model** |
+| 5 | **Guardrail / policy gate** | Enforce business policy deterministically, independent of what the AI concluded | Pre-assessment fast-fail (`checkInputPolicy`) + post-assessment policy check (`checkDecisionPolicy`) — `packages/core/src/guardrail.ts` | n8n **Code: Guardrail + Policy Gate** node |
+| 6 | **Decision record** | Produce an immutable, schema-checked artifact that can be replayed or audited later | Zod-validated, immutable record assembled and schema-checked — `packages/core/src/decision.ts:buildDecisionRecord` + `DecisionRecordSchema` | n8n **If: Approved?** → **Decision: Approved/Rejected** |
+| 7 | **Action** | Turn a governed decision into a recommendation a downstream system or human can act on | Recommend act / hold / decline (`BUY`/`HOLD`/`PASS` in code) + half-Kelly sizing where applicable, written to the `decision_ledger` Postgres table and returned via the webhook response — `packages/app/src/persist.ts`, `db/schema.sql`, n8n **Postgres: insert decision_ledger** → **Respond to Webhook** | (domain-specific — the framework returns the governed decision, the caller decides what "action" means downstream) |
+
+`packages/core/src/decision.ts:runDecision` is the orchestrator: input-policy check → agent assess → signal computation → judge → (revise loop, up to `maxRevise`) → decision-policy check → record. The **adversarial LLM-as-judge** is worth calling out specifically: it doesn't just rubber-stamp the agent's output — it's instructed to score the agent's reasoning critically against the rubric, and a low score sends the assessment back for revision or has it rejected outright before it ever reaches the guardrail or the ledger. That's what makes it safe to run a smaller, cheaper local model as the primary agent: a bad or ungrounded assessment is caught and stopped, not silently passed through as a governed recommendation. The whole pipeline is deterministic and unit-testable via `StubLLM` (`packages/core/src/ollama.ts`) with zero network/GPU dependency — that's how 141 tests run in under a second (see [Testing & Quality Harness](#testing--quality-harness)).
+
+### A real decision run
+
+Below is real, reproducible output from `node packages/app/dist/cli.js --mode fixture --stub --limit 9`, run against captured fixture data in this repo (deterministic `StubLLM`, no GPU needed). This is an excerpt — three of the nine candidates evaluated in that run — chosen because it shows both outcomes side by side (run it yourself for the full nine-row output):
 
 ```
-SUBJECT                                                MODEL  MARKET  EDGE    ACTION  JUDGE  STATUS
------------------------------------------------------  -----  ------  ------  ------  -----  --------
-Will Valtteri Bottas win the F1 Drivers Championship?  0.000  0.020   -0.020  PASS    pass   approved
-Will Sergio Perez win the F1 Drivers Championship?     0.000  0.020   -0.020  PASS    pass   approved
-Will Pierre Gasly win the F1 Drivers Championship?     0.012  0.020   -0.008  PASS    pass   approved
+SUBJECT                                                MODEL  MARKET  SIGNAL  ACTION  JUDGE  STATUS
 Will Oscar Piastri win the F1 Drivers Championship?    0.183  0.235   -0.052  PASS    pass   approved
-Will Oliver Bearman win the F1 Drivers Championship?   0.014  0.020   -0.006  PASS    pass   approved
-Will Nico Hulkenberg win the F1 Drivers Championship?  0.000  0.020   -0.020  PASS    pass   approved
 Will Max Verstappen win the F1 Drivers Championship?   0.121  0.315   -0.194  PASS    pass   approved
-Will Lance Stroll win the F1 Drivers Championship?     0.013  0.020   -0.007  PASS    pass   approved
-Will Lando Norris win the F1 Drivers Championship?     0.200  0.135   0.065   BUY     pass   approved
-
-(9 decision(s) — dry-run, not persisted; pass --db-url to persist)
+Will Lando Norris win the F1 Drivers Championship?     0.200  0.135   +0.065  BUY     pass   approved
 ```
 
-Read the Norris row: the softmax model (`packages/f1model/src/model.ts`) estimates his win probability at **0.200**, but Kalshi's `yes_bid`/`yes_ask` on `KXF1-...-NORRIS` imply the market only prices him at **0.135**. `edge = modelProb − marketProb = +0.065`, which clears the policy's `minEdge` (0.05) and `minConfidence` (0.55) thresholds (`packages/f1model/src/edge.ts:decideAction`), so the system recommends **BUY**. The LLM-judge independently scores the reasoning behind it as `pass`, the guardrail/policy gate approves it, and it is written to `decision_ledger` as `status: approved`. Every other market's edge is negative or below threshold, so they correctly `PASS`. This is a real, reproducible run against real (if demo-priced — see [Data sources](#data-sources-all-free--keyless)) market data, not a mocked example.
+Read this as a business decision example: for each candidate, the system's model estimates a probability (`MODEL`) and compares it against an external market-implied probability (`MARKET`) — the gap between the two is the decision **signal**. For Norris, the softmax model (`packages/f1model/src/model.ts`) estimates a **0.200** win probability, but the external market-signal source implies only **0.135** — a **+0.065 signal** that clears the policy's `minEdge` (0.05) and `minConfidence` (0.55) thresholds (`packages/f1model/src/edge.ts:decideAction`), so the governed recommendation is **act** (`BUY` in the raw output — see [Terminology note](#a-note-on-the-action-codes) below). Piastri's and Verstappen's signals are negative — the market already prices them higher than the model does — so the system correctly recommends **decline** (`PASS`). In every row, an independent adversarial judge scored the reasoning `pass`, the policy gate approved it, and the outcome was written to the auditable `decision_ledger` as `status: approved`.
+
+#### A note on the action codes
+
+The pipeline's code and raw CLI output use the short codes `BUY` / `HOLD` / `PASS` for historical reasons tied to the reference domain — read them as decision recommendations, not trading instructions: `BUY` means **recommend act**, `HOLD` means **hold — insufficient signal or confidence to act**, and `PASS` means **decline — signal does not clear policy**. The `decision_ledger` table these are written to is an auditable decision record for governance and traceability, not a trade log — there is no order-execution code path anywhere in this repository (`packages/kalshi/src/client.ts` is read-only by design; see [Design decisions](#design-decisions)).
 
 ## Architecture
 
@@ -46,25 +92,25 @@ flowchart TD
     end
 
     subgraph gh["GitHub"]
-        actions["GitHub Actions\nci.yml / cd.yml"]
+        actions["GitHub Actions<br/>ci.yml / cd.yml"]
     end
 
-    subgraph gcp["Google Cloud Platform — f1-decision-platform"]
-        ar["Artifact Registry\n(n8n container image)"]
-        cr["Cloud Run: f1-n8n\n(scale-to-zero, min=0 max=4)"]
-        crworker["Cloud Run: f1-n8n-worker\n(queue mode, toggleable)"]
-        sql["Cloud SQL: Postgres\n(n8n storage + decision_ledger)"]
-        redis["Memorystore Redis\n(Bull queue, toggleable)"]
-        mig["Ollama GPU MIG\nspot L4, autoscale 0→2"]
-        sm["Secret Manager\n(DB pw, JWT secret, Kalshi keys)"]
-        ps["Pub/Sub\ndecisions + deadletter"]
-        mon["Cloud Logging / Monitoring\n+ dashboard + alert policy"]
-        wif["Workload Identity Federation\n(keyless GitHub OIDC deploy)"]
+    subgraph gcp["Google Cloud Platform — decision-orchestration-platform"]
+        ar["Artifact Registry<br/>(n8n container image)"]
+        cr["Cloud Run: n8n<br/>(scale-to-zero, min=0 max=4)"]
+        crworker["Cloud Run: n8n-worker<br/>(queue mode, toggleable)"]
+        sql[("Cloud SQL: Postgres<br/>(n8n storage + decision_ledger)")]
+        redis[("Memorystore Redis<br/>(Bull queue, toggleable)")]
+        mig["Ollama GPU MIG<br/>spot L4, autoscale 0→2"]
+        sm["Secret Manager<br/>(DB pw, JWT secret, signal-source keys)"]
+        ps["Pub/Sub<br/>decisions + deadletter"]
+        mon["Cloud Logging / Monitoring<br/>+ dashboard + alert policy"]
+        wif["Workload Identity Federation<br/>(keyless GitHub OIDC deploy)"]
     end
 
-    subgraph ext["External (keyless, read-only)"]
-        kalshi["Kalshi markets API"]
-        jolpica["Jolpica-F1 / OpenF1 / Open-Meteo / Autosport RSS"]
+    subgraph ext["External signal sources (keyless, read-only)"]
+        kalshi["Market-signal API"]
+        jolpica["Championship data / weather / news feeds"]
     end
 
     push --> actions
@@ -84,130 +130,29 @@ flowchart TD
     cr --> mon
     cr --> kalshi
     cr --> jolpica
+
+    classDef gcpCompute fill:#4285F4,stroke:#1a56b8,color:#fff;
+    classDef storage fill:#546E7A,stroke:#37474F,color:#fff;
+    classDef ai fill:#F4B400,stroke:#b58200,color:#111;
+    classDef governance fill:#7B42BC,stroke:#54277f,color:#fff;
+    classDef signal fill:#0F9D58,stroke:#0a7040,color:#fff;
+    classDef devNode fill:#E8EAED,stroke:#9AA0A6,color:#111;
+
+    class push devNode;
+    class actions,wif,sm,mon,ps governance;
+    class ar,cr,crworker gcpCompute;
+    class sql,redis storage;
+    class mig ai;
+    class kalshi,jolpica signal;
 ```
 
-Deployed live to GCP project `f1-decision-platform` (`infra/terraform/`). n8n runs on Cloud Run today; the Ollama GPU MIG is written and `terraform apply`-ready but deferred pending an L4 quota grant on the project (see [Honest limitations](#honest-limitations) and `BLOCKERS.md`).
-
-## The n8n workflow graph
-
-These are generated straight from the real workflow JSON in `workflows/` by `scripts/export-graph.mjs` (`node scripts/export-graph.mjs workflows/10-f1-edge-flagship.json docs/img/10-f1-edge-flagship.mmd`) — GitHub renders the fences below natively, no external tooling needed. Sticky-note documentation nodes are excluded from the graph (they carry no execution edges); see `workflows/README.md` for the annotated walkthrough and `make graph` / workflow import for a live n8n canvas view.
-
-### `10-f1-edge-flagship.json` — the flagship pipeline (17 executable nodes, 3 trigger types)
-
-```mermaid
-graph TD
-  Webhook__JWT_(("Webhook (JWT)<br/>(webhook)"))
-  Schedule_Trigger(("Schedule Trigger<br/>(scheduleTrigger)"))
-  Manual_Trigger(("Manual Trigger<br/>(manualTrigger)"))
-  Code__prepare_warmup["Code: prepare/warmup<br/>(code)"]
-  HTTP__Jolpica_standings[("HTTP: Jolpica standings<br/>(httpRequest)")]
-  HTTP__OpenF1_weather[("HTTP: OpenF1 weather<br/>(httpRequest)")]
-  HTTP__Open_Meteo_forecast[("HTTP: Open-Meteo forecast<br/>(httpRequest)")]
-  HTTP__Kalshi_KXF1_markets[("HTTP: Kalshi KXF1 markets<br/>(httpRequest)")]
-  RSS__Autosport_F1_news["RSS: Autosport F1 news<br/>(rssFeedRead)"]
-  Merge__combine_evidence["Merge: combine evidence<br/>(merge)"]
-  Code__build_evidence___win_probabilities["Code: build evidence + win-probabilities<br/>(code)"]
-  Loop_Over_Items__per_market_["Loop Over Items (per market)<br/>(splitInBatches)"]
-  Execute_Sub_workflow__Decision_Framework["Execute Sub-workflow: Decision Framework<br/>(executeWorkflow)"]
-  Code__compute_edge___size["Code: compute edge + size<br/>(code)"]
-  Postgres__insert_decision_ledger[("Postgres: insert decision_ledger<br/>(postgres)")]
-  If__any_BUY_{"If: any BUY?<br/>(if)"}
-  Respond_to_Webhook(("Respond to Webhook<br/>(respondToWebhook)"))
-  Webhook__JWT_ --> Code__prepare_warmup
-  Schedule_Trigger --> Code__prepare_warmup
-  Manual_Trigger --> Code__prepare_warmup
-  Code__prepare_warmup --> HTTP__Jolpica_standings
-  Code__prepare_warmup --> HTTP__OpenF1_weather
-  Code__prepare_warmup --> HTTP__Open_Meteo_forecast
-  Code__prepare_warmup --> HTTP__Kalshi_KXF1_markets
-  Code__prepare_warmup --> RSS__Autosport_F1_news
-  HTTP__Jolpica_standings --> Merge__combine_evidence
-  HTTP__OpenF1_weather --> Merge__combine_evidence
-  HTTP__Open_Meteo_forecast --> Merge__combine_evidence
-  HTTP__Kalshi_KXF1_markets --> Merge__combine_evidence
-  RSS__Autosport_F1_news --> Merge__combine_evidence
-  Merge__combine_evidence --> Code__build_evidence___win_probabilities
-  Code__build_evidence___win_probabilities --> Loop_Over_Items__per_market_
-  Loop_Over_Items__per_market_ -->|main:0| Postgres__insert_decision_ledger
-  Loop_Over_Items__per_market_ -->|main:1| Execute_Sub_workflow__Decision_Framework
-  Execute_Sub_workflow__Decision_Framework --> Code__compute_edge___size
-  Code__compute_edge___size --> Loop_Over_Items__per_market_
-  Postgres__insert_decision_ledger --> If__any_BUY_
-  If__any_BUY_ -->|main:0| Respond_to_Webhook
-  If__any_BUY_ -->|main:1| Respond_to_Webhook
-```
-
-### `00-decision-framework.json` — the reusable, domain-agnostic decision core (9 executable nodes)
-
-Called once per market via **Execute Sub-workflow** from the flagship graph above. It has no F1/Kalshi-specific logic at all — this is the part that's reusable for any other decision domain.
-
-```mermaid
-graph TD
-  Sub_workflow_Trigger(("Sub-workflow Trigger<br/>(executeWorkflowTrigger)"))
-  AI_Agent__Analyst["AI Agent: Analyst<br/>(agent)"]
-  Ollama_Chat_Model__Analyst_[("Ollama Chat Model (Analyst)<br/>(lmChatOllama)")]
-  AI_Agent__Judge__rubric_["AI Agent: Judge (rubric)<br/>(agent)"]
-  Ollama_Chat_Model__Judge_[("Ollama Chat Model (Judge)<br/>(lmChatOllama)")]
-  Code__Guardrail___Policy_Gate["Code: Guardrail + Policy Gate<br/>(code)"]
-  If__Approved_{"If: Approved?<br/>(if)"}
-  Decision__Approved["Decision: Approved<br/>(set)"]
-  Decision__Rejected["Decision: Rejected<br/>(set)"]
-  Sub_workflow_Trigger --> AI_Agent__Analyst
-  Ollama_Chat_Model__Analyst_ -->|ai_languageModel:0| AI_Agent__Analyst
-  AI_Agent__Analyst --> AI_Agent__Judge__rubric_
-  Ollama_Chat_Model__Judge_ -->|ai_languageModel:0| AI_Agent__Judge__rubric_
-  AI_Agent__Judge__rubric_ --> Code__Guardrail___Policy_Gate
-  Code__Guardrail___Policy_Gate --> If__Approved_
-  If__Approved_ -->|main:0| Decision__Approved
-  If__Approved_ -->|main:1| Decision__Rejected
-```
-
-A third workflow, `workflows/90-warmup-ping.json` (6 nodes), polls Ollama and pre-warms the model before a real run so the first Agent/Judge call doesn't eat a multi-minute cold-load penalty — see `workflows/README.md`.
-
-## Quickstart
-
-Runs **clone → up with zero credentials**, against real captured fixture data (see [Data sources](#data-sources-all-free--keyless)):
-
-```bash
-git clone <this-repo> && cd f1-decision-platform
-cp .env.example .env        # optional — sane defaults are baked in
-docker compose up -d        # postgres + n8n + ollama
-make warm                   # pull qwen2.5:7b-instruct / qwen2.5:14b-instruct into ollama
-make import-workflows       # import workflows/*.json into the running n8n
-make e2e                    # run the end-to-end decision pipeline script
-```
-
-Or skip Docker/n8n entirely and run the TypeScript pipeline directly:
-
-```bash
-npm install && npm run build
-node packages/app/dist/cli.js --mode fixture --stub --limit 9   # deterministic, no GPU
-node packages/app/dist/cli.js --mode fixture --model qwen2.5:14b-instruct  # real local LLM
-```
-
-`make help` lists every lifecycle target (`up`/`down`/`logs`/`seed`/`graph`/`pdf`/`bootstrap-gcp`/`deploy`/`gpu-up`/`gpu-down`/...).
-
-## The decision pipeline, explained
-
-The framework (`packages/core`) implements seven stages, mirrored 1:1 by `workflows/00-decision-framework.json` + `workflows/10-f1-edge-flagship.json`:
-
-| # | Stage | Flagship implementation | Framework implementation |
-|---|---|---|---|
-| 1 | **Ingest** | 5 parallel HTTP/RSS calls (Jolpica, OpenF1, Open-Meteo, Kalshi, Autosport) with retry, merged into one evidence bundle — `packages/app/src/evidence.ts:gatherEvidence` | `Evidence[]` contract, `packages/contracts/src/schemas.ts` (Zod-validated on the way in) |
-| 2 | **Enrich** | Softmax win-probability model + betting-edge calculation — `packages/f1model/src/model.ts`, `packages/f1model/src/edge.ts` | domain-supplied `context` on `DecisionInput` |
-| 3 | **AI agent** | Local Qwen produces a structured `{probability, reasoning, keyFactors}` from evidence only — `packages/core/src/agent.ts:assess` | n8n **AI Agent: Analyst** node + **Ollama Chat Model** |
-| 4 | **LLM-as-judge** | An independent local Qwen call scores the assessment 0–1 against a weighted rubric — `packages/core/src/judge.ts:judge`, rubric in `packages/contracts/src/rubric.ts` | n8n **AI Agent: Judge (rubric)** node + its own **Ollama Chat Model** |
-| 5 | **Guardrail / policy gate** | Pre-assessment fast-fail (`checkInputPolicy`) + post-assessment policy check (`checkDecisionPolicy`) — `packages/core/src/guardrail.ts` | n8n **Code: Guardrail + Policy Gate** node |
-| 6 | **Decision record** | Zod-validated, immutable record assembled and schema-checked — `packages/core/src/decision.ts:buildDecisionRecord` + `DecisionRecordSchema` | n8n **If: Approved?** → **Decision: Approved/Rejected** |
-| 7 | **Action** | BUY/PASS/HOLD + half-Kelly position size, written to the `decision_ledger` Postgres table and returned via the webhook response — `packages/app/src/persist.ts`, `db/schema.sql`, n8n **Postgres: insert decision_ledger** → **Respond to Webhook** | (domain-specific — the framework returns the decision, the caller decides what "action" means) |
-
-`packages/core/src/decision.ts:runDecision` is the orchestrator: input-policy check → agent assess → edge → judge → (revise loop, up to `maxRevise`) → decision-policy check → record. The whole thing is deterministic and unit-testable via `StubLLM` (`packages/core/src/ollama.ts`) with zero network/GPU dependency — that's how 141 tests run in under a second (see below).
+Deployed live to a GCP project (`infra/terraform/`) provisioned for this platform. n8n runs on Cloud Run today; the Ollama GPU MIG is written and `terraform apply`-ready but deferred pending an L4 quota grant on the project (see `BLOCKERS.md`).
 
 ## Testing & Quality Harness
 
 This is the most heavily invested-in part of the repo — TDD throughout, with tests at every seam so the AI-in-the-loop pieces stay honest.
 
-### Local: 141 tests, 17 files, ~99% coverage on every hand-written package
+### Local: 141 tests, 17 files
 
 ```
 Test Files  17 passed (17)
@@ -217,13 +162,13 @@ Test Files  17 passed (17)
 
 | Package | Stmts | Branch | Funcs | Notes |
 |---|---|---|---|---|
-| `@f1/contracts` | 100% | 98.6% | 100% | Every external payload (Jolpica, Kalshi, OpenF1, Open-Meteo, RSS) validated by a Zod schema, plus the judge rubric and policy loader. |
-| `@f1/kalshi` | 100% | 93.6% | 95.8% | Includes an RSA-PSS **signature round-trip test** (`signer.test.ts`) verifying `signKalshiRequest` against Node's own `crypto.verify`. |
-| `@f1/f1model` | 100% | 99.0% | 100% | Softmax model + edge/Kelly-sizing math — pure functions, exhaustively tested. |
-| `@f1/core` | 99.6% | 94.9% | 96.8% | The reusable framework: agent, judge, guardrail, decision assembly, `StubLLM`. Deterministic pipeline tests need **no GPU, no network**. |
-| `@f1/app` | 74.2%* | 87.9% | 92% | End-to-end pipeline + evidence gathering are fully covered; `cli.ts` (a thin argv-parsing entrypoint) and `persist.ts`'s Postgres-backed `PgDecisionStore` (exercised at runtime against a real DB, not mocked in unit tests) pull the package average down. |
+| `@dop/contracts` | 100% | 98.6% | 100% | Every external payload (championship data, market signal, weather, news) validated by a Zod schema, plus the judge rubric and policy loader. |
+| `@dop/kalshi` | 100% | 93.6% | 95.8% | Read-only external market-signal client. Includes an RSA-PSS **signature round-trip test** (`signer.test.ts`) verifying `signKalshiRequest` against Node's own `crypto.verify`. |
+| `@dop/f1model` | 100% | 99.0% | 100% | Softmax model + signal/sizing math — pure functions, exhaustively tested. |
+| `@dop/core` | 99.6% | 94.9% | 96.8% | The reusable decisioning framework: agent, judge, guardrail, decision assembly, `StubLLM`. Deterministic pipeline tests need **no GPU, no network**. |
+| `@dop/app` | 74.2%* | 87.9% | 92% | End-to-end pipeline + evidence gathering are fully covered; `cli.ts` (a thin argv-parsing entrypoint) and `persist.ts`'s Postgres-backed `PgDecisionStore` (exercised at runtime against a real DB, not mocked in unit tests) pull the package average down. |
 
-\* The monorepo-wide aggregate across all 5 packages is **93.56% statements / 94.52% branches / 95.83% functions** (v8 coverage, `npm run test:cov`) — every runtime library package clears **100% statements**; only the CLI entrypoint and the live-DB persistence adapter (intentionally not unit-mocked — see `packages/app/src/persist.ts`'s own doc comment) bring the package-level average for `@f1/app` down. All of this clears CI's enforced floor of **80% lines/functions/statements, 75% branches** (`vitest.config.ts`) with real margin.
+\* The monorepo-wide aggregate across all 5 packages is **93.56% statements / 94.52% branches / 95.83% functions** (v8 coverage, `npm run test:cov`) — every runtime library package clears **100% statements**; only the CLI entrypoint and the live-DB persistence adapter (intentionally not unit-mocked — see `packages/app/src/persist.ts`'s own doc comment) bring the package-level average for `@dop/app` down. All of this clears CI's enforced floor of **80% lines/functions/statements, 75% branches** (`vitest.config.ts`) with real margin.
 
 Run it yourself:
 
@@ -242,45 +187,37 @@ make test-cov        # same, via the Makefile
 | `security` | `gitleaks` secret scan (blocking) + `npm audit --audit-level=high` (advisory) | Secret scan only |
 | **`adversarial-review`** | See below | Yes, on high-severity findings |
 
-**The adversarial reviewer is the headline gate.** It installs Ollama *inside the GitHub Actions runner*, pulls `qwen2.5:3b`, computes the PR's diff, and sends it to a system prompt (`scripts/ci/ai-review.mjs`) explicitly instructed to be adversarial: *"assume the author missed something and actively try to prove the diff is unsafe, incorrect, undertested, or overcomplicated."* It scores against a fixed rubric (correctness, security, test coverage, error handling, simplicity), parses the model's JSON findings, posts them as a PR comment / step summary, and **blocks the merge on any `high`-severity finding** — unless the PR carries the `override-ai-review` label (with an explanation left in a PR comment). No external AI API is used anywhere in this pipeline — the whole review runs on a 3B model inside the free GitHub Actions runner. Infra flakiness (Ollama fails to start, model pull fails, output doesn't parse) degrades gracefully to a non-blocking "skipped" notice rather than failing CI on infrastructure, not code.
+**The adversarial reviewer is the headline governance gate.** It installs Ollama *inside the GitHub Actions runner*, pulls `qwen2.5:3b`, computes the PR's diff, and sends it to a system prompt (`scripts/ci/ai-review.mjs`) explicitly instructed to be adversarial: *"assume the author missed something and actively try to prove the diff is unsafe, incorrect, undertested, or overcomplicated."* It scores against a fixed rubric (correctness, security, test coverage, error handling, simplicity), parses the model's JSON findings, posts them as a PR comment / step summary, and **blocks the merge on any `high`-severity finding** — unless the PR carries the `override-ai-review` label (with an explanation left in a PR comment). This same responsible-AI pattern — a governed, rubric-scored AI check with a human override path — is the pattern the decision pipeline itself uses for the LLM-as-judge stage. No hosted AI API is required anywhere in this pipeline — the whole review runs on a 3B model inside the free GitHub Actions runner. Infra flakiness (Ollama fails to start, model pull fails, output doesn't parse) degrades gracefully to a non-blocking "skipped" notice rather than failing CI on infrastructure, not code.
 
-## Real local-model evidence: the judge enforcing a quality bar
+The workflows are version-controlled JSON, validated against n8n's own node schemas by importing into a live n8n instance in CI. That schema-first surface is what makes the platform work hand-in-glove with **n8n-mcp** (programmatic node discovery and workflow-JSON validation against a live instance) and **n8n-skills** (repeatable, AI-assisted workflow-authoring patterns) for ongoing development.
 
-The stub-LLM table above proves the *pipeline* is correct. To prove the *AI* is doing real work, here's what happened running the same pipeline against a real local model (`qwen2.5:7b-instruct`, RTX 5080 + Ollama) instead of the deterministic stub: the 7B model's assessments were, in places, weakly grounded — and the adversarial LLM-judge **correctly rejected them**. One judge output included:
+## Quickstart
 
-```json
-{
-  "criteria": { "evidence_grounded": 0, "reasoning_quality": 0 },
-  "critique": "provides no reasoning ... arbitrarily assigns 100% confidence"
-}
+Runs **clone → up with zero credentials**, against real captured fixture data (see [Data sources](#data-sources)):
+
+```bash
+git clone <this-repo> && cd n8n
+cp .env.example .env        # optional — sane defaults are baked in
+docker compose up -d        # postgres + n8n + ollama
+make warm                   # pull qwen2.5:7b-instruct / qwen2.5:14b-instruct into ollama
+make import-workflows       # import workflows/*.json into the running n8n
+make e2e                    # run the end-to-end decision pipeline script
 ```
 
-That decision was correctly marked governance-`rejected` rather than silently passed through. This is presented honestly, not swept under the rug: it's the **guardrail + LLM-judge doing exactly their job** — a small 7B model isn't always well-calibrated, and the system is designed to catch that rather than trust it blindly. Assessment quality scales with model size (`OLLAMA_MODEL_AGENT=qwen2.5:14b-instruct` is the default in `.env.example`; 32B or a hosted model behind the same OpenAI-compatible `LLM` interface — `packages/core/src/ollama.ts` — would improve it further), but the judge/guardrail layer is what makes the platform safe to point at a *weaker* model in the first place, since bad reasoning is caught rather than laundered into a trade decision.
+Or skip Docker/n8n entirely and run the TypeScript pipeline directly:
 
-## Attribute → implementation matrix
+```bash
+npm install && npm run build
+node packages/app/dist/cli.js --mode fixture --stub --limit 9   # deterministic, no GPU
+node packages/app/dist/cli.js --mode fixture --model qwen2.5:14b-instruct  # real local LLM
+```
 
-| # | Attribute | Implementation (real paths) |
-|---|---|---|
-| 2.1 | **Scalable** | Cloud Run `min_instance_count=0` scale-to-zero (`infra/terraform/cloudrun_n8n.tf`); Ollama GPU MIG autoscale 0→2 (`infra/terraform/ollama_gpu.tf`); toggleable queue-mode Redis + `n8n worker` service for horizontal scaling (`infra/terraform/queue_mode.tf`, `enable_queue_mode`) |
-| 2.2 | **Secure OAuth/JWT + webhooks** | n8n JWT-authenticated `Webhook (JWT)` trigger in the flagship workflow (`workflows/10-f1-edge-flagship.json`); secrets in Secret Manager (`infra/terraform/secrets.tf`); keyless CI/CD via Workload Identity Federation (`infra/terraform/wif.tf`); RSA-PSS-signed Kalshi requests (`packages/kalshi/src/signer.ts`) |
-| 2.3 | **Resilient** | `options.retry` (3 retries) on every ingest `HTTP Request` node in the flagship workflow; n8n's own execution error handling; Postgres persistence of every run/evidence/decision (`db/schema.sql`); Cloud Run + MIG auto-heal via health/liveness probes; Pub/Sub dead-letter topic + subscription (`infra/terraform/pubsub.tf`) |
-| 2.4 | **AI-enabled** | n8n `AI Agent` + `lmChatOllama` nodes calling local Qwen (`workflows/00-decision-framework.json`); TypeScript mirror in `packages/core/src/agent.ts` + `judge.ts`; no external AI API dependency anywhere |
-| 2.5 | **Multi-function decision framework** | `packages/core` (agent/judge/guardrail/decision, domain-agnostic) + `workflows/00-decision-framework.json` (the reusable sub-workflow, zero F1-specific logic) |
-| 2.6 | **API-first / REST** | n8n's own REST/public API surface; the flagship workflow's `Respond to Webhook` node returns the decision JSON to any caller |
-| 2.7 | **Event-driven** | 3 trigger types on the flagship workflow (`Webhook`, `Schedule Trigger`, `Manual Trigger`); `90-warmup-ping.json` on a 15-minute schedule; Pub/Sub `decisions` topic (`infra/terraform/pubsub.tf`) |
-| 2.8 | **Connects systems** | Kalshi, Jolpica-F1, OpenF1, Open-Meteo, Autosport RSS, Ollama, Postgres, Pub/Sub — 8 distinct systems wired together in one workflow graph |
-| 2.9.1 | **Dev standard** | TDD with an enforced 80%-lines/80%-functions/75%-branches/80%-statements coverage gate (`vitest.config.ts`, `.github/workflows/ci.yml`); Ollama-Qwen adversarial CI code reviewer (`scripts/ci/ai-review.mjs`) |
-| 2.9.2 / 2.9.6 | **Deploy / env strategy** | Terraform → GCP (`infra/terraform/`), GitHub Actions CD gated behind `ENABLE_CD` repo variable + WIF (`.github/workflows/cd.yml`); `.env.example` documents every runtime var; `enable_gpu`/`enable_queue_mode`/`n8n_public` toggles for cost/topology tradeoffs (`infra/terraform/variables.tf`) |
-| 2.9.3 / 2.9.8 | **Monitoring / observability** | Cloud Monitoring dashboard (`infra/terraform/dashboards/n8n-overview.json`, wired via `infra/terraform/monitoring.tf`), a log-based metric on `decision_logged` events, and a 5xx-error-rate alert policy |
-| 2.9.4 | **Reliability** | Cloud SQL Postgres (`infra/terraform/cloudsql.tf`) as the durable store for both n8n's own state and the decision ledger; `decision_runs`/`evidence_snapshots`/`decision_ledger` tables persist full provenance for replay (`db/schema.sql`) |
-| 2.9.5 | **Governance** | Guardrail + policy gate (`packages/core/src/guardrail.ts`), auditable decision ledger with `policy_violations`/`rationale`/`raw` columns (`db/schema.sql`), least-privilege IAM (`infra/terraform/iam.tf`, `wif.tf`), all secrets in Secret Manager (never in code or workflow JSON) |
-| 2.9.7 | **Reusable frameworks / templates / prompts** | `workflows/00-decision-framework.json` (the callable sub-workflow) + the agent/judge prompt-building functions in `packages/core/src/agent.ts:buildPrompt` and `packages/core/src/judge.ts:buildPrompt`, parameterized entirely by evidence/rubric, not F1-specific strings |
-| 2.9.9 | **Cloud** | Cloud Run (containers) + Docker (`docker-compose.yml` locally, upstream `n8nio/n8n` image in prod) + Ollama on a GCP GPU MIG (`infra/terraform/ollama_gpu.tf`) |
+`make help` lists every lifecycle target (`up`/`down`/`logs`/`seed`/`graph`/`pdf`/`bootstrap-gcp`/`deploy`/`gpu-up`/`gpu-down`/...).
 
 ## Deploy to GCP
 
 ```bash
-export PROJECT_ID=f1-decision-platform REGION=us-central1
+export PROJECT_ID=<your-project-id> REGION=us-central1
 make bootstrap-gcp   # one-time: create project, link billing, enable APIs, create tfstate bucket
 make deploy          # terraform init + apply (infra/terraform/)
 ```
@@ -293,41 +230,39 @@ make deploy          # terraform init + apply (infra/terraform/)
 
 ```
 packages/
-  contracts/   @f1/contracts  — shared types, Zod ingestion schemas, judge rubric, policy loader
-  kalshi/      @f1/kalshi     — read-only Kalshi client, RSA-PSS signer, fixture-backed market fetcher
-  f1model/     @f1/f1model    — softmax win-probability model, edge calc, half-Kelly sizing
-  core/        @f1/core       — the reusable decision framework: agent, judge, guardrail, decision record, Ollama client
-  app/         @f1/app        — end-to-end pipeline + the `f1-decision` CLI
+  contracts/   @dop/contracts — shared types, Zod ingestion schemas, judge rubric, policy loader
+  kalshi/      @dop/kalshi    — read-only external market-signal client, RSA-PSS signer, fixture-backed fetcher
+  f1model/     @dop/f1model   — softmax probability model, model-vs-market signal calc, half-Kelly sizing
+  core/        @dop/core      — the reusable decision framework: agent, judge, guardrail, decision record, Ollama client
+  app/         @dop/app       — end-to-end pipeline + the `f1-decision` CLI
 fixtures/      real captured snapshots of every external data source (see below)
 workflows/     importable n8n workflow JSON exports (the visual centerpiece)
 db/            decision_runs / evidence_snapshots / decision_ledger schema
 infra/terraform/  GCP IaC — Cloud Run, Cloud SQL, Ollama GPU MIG, Pub/Sub, Secret Manager, WIF, monitoring
 scripts/       bootstrap-gcp.sh, deploy.sh, export-graph.mjs, ci/ai-review.mjs, ci/validate-artifacts.mjs
-docs/img/      generated Mermaid (.mmd) exports of every workflow graph
+docs/img/      generated Mermaid (.mmd) exports + PNG screenshots of every workflow graph
 ```
 
-## Data sources (all free / keyless)
+## Data sources
 
-| Source | What it provides | Auth |
+Every evidence source is a **pluggable adapter**, not a hardcoded integration: each one is an n8n `HTTP Request` or `RSS Read` node paired with a typed `@dop/*` client and a Zod schema that validates the payload on the way in (`packages/contracts/src/schemas.ts`). Swapping a data source for a different domain means pointing the node at a new endpoint and writing a new Zod schema for its response shape — nothing else in the pipeline changes. This is the source-agnostic story in practice: the platform doesn't know or care that today's evidence happens to be F1 championship data. Secure integration is handled the same way regardless of source — OAuth2/JWT credential types in n8n, secrets in GCP Secret Manager, and RSA-signed requests where the upstream API requires it (`packages/kalshi/src/signer.ts`).
+
+| Source | Signal it provides | Swap-in note |
 |---|---|---|
-| [Jolpica-F1](https://api.jolpi.ca) | Championship standings, race results (Ergast-compatible) | None |
-| [OpenF1](https://openf1.org) | Session metadata, trackside weather telemetry | None |
-| [Open-Meteo](https://open-meteo.com) | Race-weekend weather forecast | None |
-| [Autosport](https://www.autosport.com) | F1 news RSS feed | None |
-| [Kalshi](https://kalshi.com) | Prediction-market prices (`GET /trade-api/v2/markets`) | None to *read* — RSA-PSS signing (`packages/kalshi/src/signer.ts`) is only needed to *place* orders, which this system never does; it is paper-trade-only by design |
+| [Jolpica-F1](https://api.jolpi.ca) | Championship standings, race results (Ergast-compatible) | Any REST API returning structured domain state — replace with a claims system, a CRM, or an ERP feed |
+| [OpenF1](https://openf1.org) | Session metadata, trackside weather telemetry | Any real-time telemetry/event API |
+| [Open-Meteo](https://open-meteo.com) | Race-weekend weather forecast | Any contextual/environmental data API |
+| [Autosport](https://www.autosport.com) | F1 news RSS feed | Any RSS/news feed — swap for an industry news feed or an internal announcements feed |
+| [Kalshi](https://kalshi.com) | External market-implied probability (the model-vs-market decision signal) | Any external benchmark/reference-rate API — a credit bureau score, an actuarial table, a market index |
 
-`fixtures/` holds real, captured snapshots of every one of the above (see `fixtures/README.md` + `fixtures/manifest.json`), so `docker compose up` runs **clone → run with zero credentials**. Note: Kalshi's real F1-2026 markets were captured with a genuinely empty off-season order book (`yes_bid`/`yes_ask` null); those 22 markets were synthetically demo-priced (flagged `_demo_priced: true`, real thin values preserved alongside) so the edge math has something to compute against — see `fixtures/README.md`'s "Kalshi demo pricing" section for full transparency on exactly which numbers are synthetic.
+`fixtures/` holds real, captured snapshots of every one of the above (see `fixtures/README.md` + `fixtures/manifest.json`), so `docker compose up` runs **clone → run with zero credentials**. Note: the market-signal source's real F1-2026 markets were captured with a genuinely empty off-season order book (`yes_bid`/`yes_ask` null); those 22 markets were synthetically demo-priced (flagged `_demo_priced: true`, real thin values preserved alongside) so the signal math has something to compute against — see `fixtures/README.md`'s "Kalshi demo pricing" section for full transparency on exactly which numbers are synthetic.
 
 ## Design decisions
 
-- **Local-Qwen-only, always.** `packages/core/src/ollama.ts:OllamaClient` talks to any OpenAI-compatible `/v1/chat/completions` endpoint — Ollama today, a hosted model tomorrow if ever wanted — but the shipped configuration (`.env.example`, `docker-compose.yml`, the n8n workflow's `lmChatOllama` nodes) never calls out to an external AI API. This was a deliberate constraint, not a limitation: it keeps the whole pipeline auditable, cost-free to run, and reproducible offline.
-- **Fixture-default Kalshi.** `KALSHI_MODE=fixture` is the default everywhere (`.env.example`, `packages/app/src/evidence.ts`). Live mode (`KALSHI_MODE=live`) fetches real market data with zero credentials (Kalshi's market-read endpoints are public); only order *placement* would need signing keys, and this system never places orders.
-- **Paper-only, on purpose.** There is no order-submission code path anywhere in `@f1/kalshi` (see the file-level comment in `packages/kalshi/src/client.ts`: *"Paper-only: order execution intentionally not implemented; this client is read-only"*). Every "BUY" is a logged, auditable recommendation in `decision_ledger`, never a real trade.
+- **Source-agnostic framework, pluggable reference domain.** `packages/core` and `workflows/00-decision-framework.json` contain zero domain-specific logic — the F1/prediction-market build in this repo is one instantiation, chosen because it has genuinely live, free, keyless APIs to demonstrate the full pipeline end to end. Swapping the evidence adapters and the domain prompt (`packages/core/src/agent.ts:buildPrompt`) retargets the same core to a different business decision.
+- **Local-LLM-first, API-first by design.** `packages/core/src/ollama.ts:OllamaClient` talks to any OpenAI-compatible `/v1/chat/completions` endpoint. The shipped configuration (`.env.example`, `docker-compose.yml`, the n8n workflow's `lmChatOllama` nodes) runs entirely on a local Ollama model — auditable, cost-free to run, reproducible offline, and keeps evidence off third-party infrastructure. Pointing the same interface at a hosted frontier model for a higher-stakes decision domain is a config change, not an architecture change.
+- **Humans own the logic.** The policy thresholds (`.env`, `packages/core/src/guardrail.ts`), the judge's rubric (`packages/contracts/src/rubric.ts`), and the entire workflow graph (`workflows/*.json`, viewable on the n8n canvas) are inspectable, versioned configuration — a policy owner or analyst can change what the platform will and won't approve without a developer touching compiled code.
+- **Fixture-backed, zero-credential onboarding.** `KALSHI_MODE=fixture` and the equivalents for every other source default to on everywhere (`.env.example`, `packages/app/src/evidence.ts`), backed by real captured API snapshots in `fixtures/`. Anyone can clone and run the full pipeline with no API keys; flipping to live mode is a config change per source, and only order-*placement*-style write paths (which this platform doesn't implement — see below) would ever need signing credentials.
+- **Read-only by construction on the reference domain.** There is no order-submission code path anywhere in `@dop/kalshi` (see the file-level comment in `packages/kalshi/src/client.ts`: *"Paper-only: order execution intentionally not implemented; this client is read-only"*). Every governed recommendation is a logged, auditable entry in `decision_ledger` — a decision record, not a transaction.
 - **Deterministic-by-construction library code.** Only `packages/app/src/cli.ts` is allowed to touch `Date.now()`/`randomUUID()` — every other module takes `createdAt`/`id` as parameters, which is what makes the 141-test suite fast and hermetic (see the doc comment at the top of `cli.ts`).
-
-## Honest limitations
-
-- **7B local model quality**: as shown above, `qwen2.5:7b-instruct` sometimes produces weakly-grounded assessments that the LLM-judge correctly rejects. This is presented as evidence the guardrail works, not swept under the rug — but it does mean the *default* agent model is `qwen2.5:14b-instruct` (`.env.example`, `packages/app/src/cli.ts:DEFAULT_MODEL`) for better calibration, and even that has not been benchmarked at the same rigor as the deterministic stub path.
-- **GPU not yet live on GCP**: `infra/terraform/ollama_gpu.tf` is written, `enable_gpu`-toggled, and `terraform apply`-ready, but the spot L4 MIG has not actually been created in the deployed project pending an L4 GPU quota grant (`BLOCKERS.md`). n8n itself is deployed and reachable on Cloud Run today.
-- **Live Kalshi null-price handling**: `packages/kalshi/src/client.ts:normalizeMarket` preserves `null` `yes_bid`/`yes_ask` rather than coercing to `0` specifically so a genuinely empty order book produces a `HOLD` (`packages/f1model/src/edge.ts:computeEdge`) rather than a false high-edge signal — this is exercised by the fixture data (see the Kalshi demo-pricing note above) but has not yet been observed against a live, currently-open F1 betting market.
-- **Grafana dashboard and live n8n canvas screenshot**: the Cloud Monitoring dashboard JSON is written and deployed (`infra/terraform/dashboards/n8n-overview.json`), but a rendered screenshot of it (and of the live n8n editor canvas, importable via `make import-workflows`) is not yet captured in this repo.
+- **Known gap, tracked openly.** The Ollama GPU MIG on GCP is written and `terraform apply`-ready but not yet provisioned pending an L4 quota grant (`BLOCKERS.md`) — n8n itself is live on Cloud Run today, and the local Ollama stack runs the full AI pipeline in the meantime.
