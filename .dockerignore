@@ -1,0 +1,53 @@
+# =============================================================================
+# f1-decision-platform — docker build context excludes
+# =============================================================================
+
+# --- node ---
+node_modules/
+**/node_modules/
+npm-debug.log*
+
+# --- git ---
+.git/
+.gitignore
+
+# --- build output ---
+dist/
+**/dist/
+build/
+coverage/
+**/coverage/
+*.tsbuildinfo
+
+# --- secrets / env ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*-key.json
+*_key.json
+service-account*.json
+gcp-sa-*.json
+kalshi_private_key*
+credentials.json
+secrets/
+
+# --- terraform ---
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+
+# --- local data volumes (bind-mounted, never baked into images) ---
+.n8n/
+n8n-data/
+postgres-data/
+ollama-data/
+
+# --- misc ---
+.DS_Store
+*.log
+tmp/
+.cache/
+docs/README.pdf
