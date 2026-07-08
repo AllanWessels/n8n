@@ -1,0 +1,18 @@
+graph TD
+  Sub_workflow_Trigger(("Sub-workflow Trigger<br/>(executeWorkflowTrigger)"))
+  AI_Agent__Analyst["AI Agent: Analyst<br/>(agent)"]
+  Ollama_Chat_Model__Analyst_[("Ollama Chat Model (Analyst)<br/>(lmChatOllama)")]
+  AI_Agent__Judge__rubric_["AI Agent: Judge (rubric)<br/>(agent)"]
+  Ollama_Chat_Model__Judge_[("Ollama Chat Model (Judge)<br/>(lmChatOllama)")]
+  Code__Guardrail___Policy_Gate["Code: Guardrail + Policy Gate<br/>(code)"]
+  If__Approved_{"If: Approved?<br/>(if)"}
+  Decision__Approved["Decision: Approved<br/>(set)"]
+  Decision__Rejected["Decision: Rejected<br/>(set)"]
+  Sub_workflow_Trigger --> AI_Agent__Analyst
+  Ollama_Chat_Model__Analyst_ -->|ai_languageModel:0| AI_Agent__Analyst
+  AI_Agent__Analyst --> AI_Agent__Judge__rubric_
+  Ollama_Chat_Model__Judge_ -->|ai_languageModel:0| AI_Agent__Judge__rubric_
+  AI_Agent__Judge__rubric_ --> Code__Guardrail___Policy_Gate
+  Code__Guardrail___Policy_Gate --> If__Approved_
+  If__Approved_ -->|main:0| Decision__Approved
+  If__Approved_ -->|main:1| Decision__Rejected

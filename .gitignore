@@ -44,7 +44,6 @@ ollama-data/
 *.log
 tmp/
 .cache/
-docs/README.pdf
 
 # terraform plan output
 infra/terraform/tfplan

@@ -1,0 +1,40 @@
+graph TD
+  Webhook__JWT_(("Webhook (JWT)<br/>(webhook)"))
+  Schedule_Trigger(("Schedule Trigger<br/>(scheduleTrigger)"))
+  Manual_Trigger(("Manual Trigger<br/>(manualTrigger)"))
+  Code__prepare_warmup["Code: prepare/warmup<br/>(code)"]
+  HTTP__Jolpica_standings[("HTTP: Jolpica standings<br/>(httpRequest)")]
+  HTTP__OpenF1_weather[("HTTP: OpenF1 weather<br/>(httpRequest)")]
+  HTTP__Open_Meteo_forecast[("HTTP: Open-Meteo forecast<br/>(httpRequest)")]
+  HTTP__Kalshi_KXF1_markets[("HTTP: Kalshi KXF1 markets<br/>(httpRequest)")]
+  RSS__Autosport_F1_news["RSS: Autosport F1 news<br/>(rssFeedRead)"]
+  Merge__combine_evidence["Merge: combine evidence<br/>(merge)"]
+  Code__build_evidence___win_probabilities["Code: build evidence + win-probabilities<br/>(code)"]
+  Loop_Over_Items__per_market_["Loop Over Items (per market)<br/>(splitInBatches)"]
+  Execute_Sub_workflow__Decision_Framework["Execute Sub-workflow: Decision Framework<br/>(executeWorkflow)"]
+  Code__compute_edge___size["Code: compute edge + size<br/>(code)"]
+  Postgres__insert_decision_ledger[("Postgres: insert decision_ledger<br/>(postgres)")]
+  If__any_BUY_{"If: any BUY?<br/>(if)"}
+  Respond_to_Webhook(("Respond to Webhook<br/>(respondToWebhook)"))
+  Webhook__JWT_ --> Code__prepare_warmup
+  Schedule_Trigger --> Code__prepare_warmup
+  Manual_Trigger --> Code__prepare_warmup
+  Code__prepare_warmup --> HTTP__Jolpica_standings
+  Code__prepare_warmup --> HTTP__OpenF1_weather
+  Code__prepare_warmup --> HTTP__Open_Meteo_forecast
+  Code__prepare_warmup --> HTTP__Kalshi_KXF1_markets
+  Code__prepare_warmup --> RSS__Autosport_F1_news
+  HTTP__Jolpica_standings --> Merge__combine_evidence
+  HTTP__OpenF1_weather --> Merge__combine_evidence
+  HTTP__Open_Meteo_forecast --> Merge__combine_evidence
+  HTTP__Kalshi_KXF1_markets --> Merge__combine_evidence
+  RSS__Autosport_F1_news --> Merge__combine_evidence
+  Merge__combine_evidence --> Code__build_evidence___win_probabilities
+  Code__build_evidence___win_probabilities --> Loop_Over_Items__per_market_
+  Loop_Over_Items__per_market_ -->|main:0| Postgres__insert_decision_ledger
+  Loop_Over_Items__per_market_ -->|main:1| Execute_Sub_workflow__Decision_Framework
+  Execute_Sub_workflow__Decision_Framework --> Code__compute_edge___size
+  Code__compute_edge___size --> Loop_Over_Items__per_market_
+  Postgres__insert_decision_ledger --> If__any_BUY_
+  If__any_BUY_ -->|main:0| Respond_to_Webhook
+  If__any_BUY_ -->|main:1| Respond_to_Webhook

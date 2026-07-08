@@ -60,9 +60,15 @@ function safeId(name, fallbackIndex) {
   return base || `node_${fallbackIndex}`;
 }
 
-// Escape text that goes inside Mermaid node/edge labels.
+// Escape text that goes inside Mermaid node/edge labels. Real newlines (and
+// literal two-character "\n" sequences baked into a label string) are turned
+// into `<br/>` so Mermaid renders an actual line break instead of the raw
+// escape sequence.
 function escapeLabel(text) {
-  return String(text ?? '').replace(/"/g, '#quot;').replace(/\n/g, ' ');
+  return String(text ?? '')
+    .replace(/"/g, '#quot;')
+    .replace(/\r\n|\n/g, '<br/>')
+    .replace(/\\n/g, '<br/>');
 }
 
 // Pick a Mermaid node shape based on n8n node type, so the diagram
@@ -87,27 +93,37 @@ function shapeFor(type, id, label) {
 
 // --- build id/name lookup ---------------------------------------------------
 
-const idById = new Map(); // n8n node "name" -> mermaid-safe id
-const nameByName = new Map(); // n8n node "name" -> display label + type
+// n8n's `stickyNote` nodes are canvas annotations, not part of the
+// executable graph (they carry no `main` connections in or out) — skip them
+// entirely so the exported diagram only shows real pipeline nodes.
+function isStickyNote(node) {
+  return String(node?.type ?? '').toLowerCase() === 'n8n-nodes-base.stickynote';
+}
+
+const idById = new Map(); // n8n node "name" -> mermaid-safe id (ALL nodes, so
+// edges referencing a sticky note - unlikely, but possible - still resolve).
+const typeByName = new Map(); // n8n node "name" -> type, used to skip sticky-note edges below.
 
 nodes.forEach((node, index) => {
   const n8nName = node.name ?? `node_${index}`;
   const id = safeId(n8nName, index);
   idById.set(n8nName, id);
-  nameByName.set(n8nName, { label: n8nName, type: node.type ?? 'unknown' });
+  typeByName.set(n8nName, node.type ?? 'unknown');
 });
 
 // --- emit ---------------------------------------------------------------
 
 const lines = ['graph TD'];
 
-// Node declarations (shaped by type).
+// Node declarations (shaped by type). Sticky notes are skipped (see
+// isStickyNote above) — they're canvas documentation, not pipeline steps.
 for (const node of nodes) {
+  if (isStickyNote(node)) continue;
   const n8nName = node.name;
   const id = idById.get(n8nName);
   const type = node.type ?? 'unknown';
   const shortType = String(type).split('.').pop();
-  const label = `${n8nName}\\n(${shortType})`;
+  const label = `${n8nName}<br/>(${shortType})`;
   lines.push(`  ${shapeFor(type, id, label)}`);
 }
 
@@ -116,6 +132,9 @@ for (const node of nodes) {
 // objects with a `node` field naming the target.
 let edgeCount = 0;
 for (const [sourceName, outputTypes] of Object.entries(connections)) {
+  // Skip any edge touching a sticky note (source or target) — sticky notes
+  // are canvas documentation, not part of the executable graph.
+  if (String(typeByName.get(sourceName) ?? '').toLowerCase() === 'n8n-nodes-base.stickynote') continue;
   const sourceId = idById.get(sourceName) ?? safeId(sourceName, `src_${edgeCount}`);
   if (!outputTypes || typeof outputTypes !== 'object') continue;
   for (const [outputType, branches] of Object.entries(outputTypes)) {
@@ -124,6 +143,7 @@ for (const [sourceName, outputTypes] of Object.entries(connections)) {
       if (!Array.isArray(branch)) return;
       for (const conn of branch) {
         if (!conn || !conn.node) continue;
+        if (String(typeByName.get(conn.node) ?? '').toLowerCase() === 'n8n-nodes-base.stickynote') continue;
         const targetId = idById.get(conn.node) ?? safeId(conn.node, `dst_${edgeCount}`);
         const edgeLabel = outputType === 'main' && branches.length <= 1 ? '' : `|${escapeLabel(outputType)}:${branchIndex}|`;
         lines.push(`  ${sourceId} -->${edgeLabel} ${targetId}`);
@@ -145,4 +165,10 @@ if (outDir && !existsSync(outDir)) {
 }
 
 writeFileSync(outputPath, output, 'utf8');
-console.log(`export-graph: wrote ${nodes.length} node(s), ${edgeCount} edge(s) -> ${outputPath}`);
+const emittedNodeCount = nodes.filter((n) => !isStickyNote(n)).length;
+const skippedStickyCount = nodes.length - emittedNodeCount;
+const stickyNote =
+  skippedStickyCount > 0 ? ` (skipped ${skippedStickyCount} stickyNote node(s))` : '';
+console.log(
+  `export-graph: wrote ${emittedNodeCount} node(s), ${edgeCount} edge(s) -> ${outputPath}${stickyNote}`,
+);

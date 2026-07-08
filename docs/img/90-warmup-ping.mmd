@@ -1,0 +1,13 @@
+graph TD
+  Manual_Trigger(("Manual Trigger<br/>(manualTrigger)"))
+  Schedule_Trigger(("Schedule Trigger<br/>(scheduleTrigger)"))
+  HTTP__Ollama__api_tags[("HTTP: Ollama /api/tags<br/>(httpRequest)")]
+  If__model_ready_{"If: model ready?<br/>(if)"}
+  Wait__loop_wait["Wait: loop wait<br/>(wait)"]
+  Code__report_warm["Code: report warm<br/>(code)"]
+  Manual_Trigger --> HTTP__Ollama__api_tags
+  Schedule_Trigger --> HTTP__Ollama__api_tags
+  HTTP__Ollama__api_tags --> If__model_ready_
+  If__model_ready_ -->|main:0| Code__report_warm
+  If__model_ready_ -->|main:1| Wait__loop_wait
+  Wait__loop_wait --> HTTP__Ollama__api_tags
