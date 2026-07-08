@@ -1,0 +1,32 @@
+{
+  "name": "@f1/app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/cli.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "f1-decision": "dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@f1/contracts": "*",
+    "@f1/kalshi": "*",
+    "@f1/f1model": "*",
+    "@f1/core": "*",
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.8",
+    "@types/pg": "^8.11.0"
+  }
+}
