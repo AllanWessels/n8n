@@ -93,6 +93,10 @@ import-workflows: ## Import workflows/*.json into n8n via its CLI
 	@echo "      log in at http://localhost:5678 and toggle 'Active', or call"
 	@echo "      POST /rest/workflows/:id/activate with a valid session/API key."
 
+import-workflows-remote: ## Import workflows/*.json into a REMOTE n8n over its API (idempotent). Needs N8N_BASE + (N8N_API_KEY | N8N_EMAIL+N8N_PASSWORD)
+	@echo "==> Importing ./workflows into $(N8N_BASE) via API..."
+	node scripts/import-workflows-remote.mjs
+
 seed: ## (Re)apply db/schema.sql to postgres — idempotent (CREATE TABLE IF NOT EXISTS)
 	@echo "==> Applying db/schema.sql to $(POSTGRES_CONTAINER)..."
 	docker exec -i $(POSTGRES_CONTAINER) psql -U $${DB_POSTGRESDB_USER:-n8n} -d $${DB_POSTGRESDB_DATABASE:-n8n} < db/schema.sql

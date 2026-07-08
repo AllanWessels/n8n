@@ -190,15 +190,19 @@ make e2e                      # prints the SUBJECT / MODEL / MARKET / SIGNAL / A
 **On the live GCP instance:**
 
 ```bash
-# 1. warm the GPU inference tier (spot L4; first run pulls the model, ~3-4 min)
+# 1. sync the version-controlled workflows into the live n8n over its API (idempotent).
+#    CD does this automatically on push; run it by hand the first time:
+N8N_BASE="$(terraform -chdir=infra/terraform output -raw n8n_url)" \
+  N8N_API_KEY=<n8n api key> make import-workflows-remote
+# 2. warm the GPU inference tier (spot L4; first run pulls the model, ~3-4 min)
 make gpu-up   PROJECT_ID=f1-decision-platform REGION=us-central1
-# 2. open the live n8n (the Cloud Run URL from `terraform output n8n_url`), open the
-#    flagship workflow, and click Execute — or POST the JWT-secured webhook on the Webhook node
-# 3. release the GPU when done
+# 3. open the live n8n, open the flagship workflow, and click Execute
+#    — or POST the JWT-secured webhook on the Webhook node
+# 4. release the GPU when done
 make gpu-down PROJECT_ID=f1-decision-platform REGION=us-central1
 ```
 
-Every run writes a row to the `decision_ledger` table and returns the decision as JSON.
+Workflows are **version-controlled and deployed programmatically** — `workflows/*.json` in git is the source of truth, imported via the n8n API by `make import-workflows-remote` (and by `cd.yml` on every push). The credential *values* (Ollama URL, Postgres, JWT) are set once per instance via the UI/API, since n8n deliberately never exports secrets in workflow JSON. Every run writes a row to the `decision_ledger` table and returns the decision as JSON.
 
 **What it costs to run.** Because the model is **local** (no per-token API fee), cost is GPU wall-clock, not per call:
 

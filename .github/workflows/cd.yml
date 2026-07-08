@@ -93,3 +93,17 @@ jobs:
         run: |
           terraform -chdir=infra/terraform apply -auto-approve \
             -var "project_id=${{ secrets.GCP_PROJECT_ID }}"
+
+      # Workflows-as-code: sync the version-controlled workflows/*.json into the
+      # running n8n over its API, so a push redeploys the graphs — no hand-import.
+      # Requires an n8n API key stored in Secret Manager as `f1-n8n-api-key`
+      # (create one in n8n: Settings -> n8n API). Skipped gracefully if absent.
+      - name: Sync workflows into live n8n (workflows-as-code)
+        run: |
+          if gcloud secrets describe f1-n8n-api-key --project "${{ secrets.GCP_PROJECT_ID }}" >/dev/null 2>&1; then
+            N8N_BASE="$(terraform -chdir=infra/terraform output -raw n8n_url)" \
+            N8N_API_KEY="$(gcloud secrets versions access latest --secret=f1-n8n-api-key --project "${{ secrets.GCP_PROJECT_ID }}")" \
+            node scripts/import-workflows-remote.mjs
+          else
+            echo "::notice::Secret f1-n8n-api-key not set — skipping workflow sync. Create an n8n API key (Settings -> n8n API) and store it to enable programmatic workflow deploys."
+          fi
