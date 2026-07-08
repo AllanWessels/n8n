@@ -1,0 +1,44 @@
+# --- secrets (NEVER commit; repo is public) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*-key.json
+*_key.json
+service-account*.json
+gcp-sa-*.json
+kalshi_private_key*
+credentials.json
+
+# --- terraform ---
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+override.tf
+override.tf.json
+
+# --- node ---
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+.npm/
+.eslintcache
+
+# --- n8n local data ---
+.n8n/
+n8n-data/
+postgres-data/
+ollama-data/
+
+# --- misc ---
+.DS_Store
+*.log
+tmp/
+.cache/
+docs/README.pdf

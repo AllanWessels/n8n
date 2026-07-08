@@ -1,0 +1,35 @@
+{
+  "name": "f1-decision-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "n8n-orchestrated, AI-enabled decision platform — F1/Kalshi betting-edge engine as the flagship instance of a reusable decision framework.",
+  "license": "MIT",
+  "author": "Allan Wessels",
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --build --force",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:cov": "vitest run --coverage",
+    "lint": "eslint . --ext .ts",
+    "format": "prettier --write \"**/*.{ts,json,md}\"",
+    "clean": "rimraf packages/*/dist packages/*/*.tsbuildinfo coverage"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@typescript-eslint/eslint-plugin": "^8.18.0",
+    "@typescript-eslint/parser": "^8.18.0",
+    "@vitest/coverage-v8": "^2.1.8",
+    "eslint": "^8.57.1",
+    "prettier": "^3.4.2",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
