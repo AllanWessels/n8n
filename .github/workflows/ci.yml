@@ -1,0 +1,172 @@
+name: CI
+
+# Runs on every pull request and on pushes to any branch other than main.
+# (main is handled by cd.yml, which deploys on push to main.)
+on:
+  pull_request:
+  push:
+    branches-ignore:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  build-test:
+    name: Build, lint, test + coverage gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (tsc -b)
+        run: npm run build
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test + coverage (fails if coverage < threshold)
+        run: npm run test:cov
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 14
+          if-no-files-found: ignore
+
+  validate-artifacts:
+    name: Validate fixtures & workflow JSON
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Validate fixtures/ and workflows/
+        run: node scripts/ci/validate-artifacts.mjs
+
+  terraform:
+    name: Terraform fmt/init/validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Check Terraform directory exists
+        id: tf-check
+        run: |
+          if [ -d "infra/terraform" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::infra/terraform not present yet — skipping terraform fmt/init/validate."
+          fi
+
+      - name: terraform fmt -check
+        if: steps.tf-check.outputs.exists == 'true'
+        run: terraform -chdir=infra/terraform fmt -check -recursive
+
+      - name: terraform init (no backend)
+        if: steps.tf-check.outputs.exists == 'true'
+        run: terraform -chdir=infra/terraform init -backend=false
+
+      - name: terraform validate
+        if: steps.tf-check.outputs.exists == 'true'
+        run: terraform -chdir=infra/terraform validate
+
+  security:
+    name: Secret scan + dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: npm audit (non-blocking)
+        run: npm audit --audit-level=high || true
+
+  adversarial-review:
+    name: AI adversarial code review (Ollama + Qwen2.5)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install Ollama
+        run: curl -fsSL https://ollama.com/install.sh | sh
+
+      - name: Start Ollama server
+        run: |
+          ollama serve &
+          echo "Waiting for Ollama to become ready..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:11434/api/version >/dev/null 2>&1; then
+              echo "Ollama is up."
+              break
+            fi
+            sleep 2
+          done
+
+      - name: Pull qwen2.5:3b model
+        run: ollama pull qwen2.5:3b
+
+      - name: Run adversarial AI review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          OLLAMA_MODEL: qwen2.5:3b
+          OLLAMA_URL: http://localhost:11434/v1/chat/completions
+        run: node scripts/ci/ai-review.mjs
+        continue-on-error: false
