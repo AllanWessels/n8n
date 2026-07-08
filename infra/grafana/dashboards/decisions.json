@@ -1,0 +1,69 @@
+{
+  "uid": "decision-ledger",
+  "title": "Decision Ledger — governance & analytics",
+  "tags": ["decisions", "governance"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-30d", "to": "now" },
+  "editable": true,
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Decisions recorded",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "decision-postgres" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" },
+      "targets": [ { "refId": "A", "format": "table", "rawQuery": true, "rawSql": "SELECT count(*) AS \"Decisions\" FROM decision_ledger;", "datasource": { "type": "postgres", "uid": "decision-postgres" } } ]
+    },
+    {
+      "id": 2, "type": "stat", "title": "Policy-approved",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "decision-postgres" },
+      "fieldConfig": { "defaults": { "unit": "percent", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 60 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" },
+      "targets": [ { "refId": "A", "format": "table", "rawQuery": true, "rawSql": "SELECT round(100.0*avg((policy_approved)::int),0) AS \"Approved\" FROM decision_ledger;", "datasource": { "type": "postgres", "uid": "decision-postgres" } } ]
+    },
+    {
+      "id": 3, "type": "stat", "title": "Judge pass rate",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "decision-postgres" },
+      "fieldConfig": { "defaults": { "unit": "percent", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "orange", "value": 50 }, { "color": "green", "value": 80 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" },
+      "targets": [ { "refId": "A", "format": "table", "rawQuery": true, "rawSql": "SELECT round(100.0*avg((judge_verdict='pass')::int),0) AS \"Judge pass\" FROM decision_ledger;", "datasource": { "type": "postgres", "uid": "decision-postgres" } } ]
+    },
+    {
+      "id": 4, "type": "stat", "title": "Avg judge score",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "decision-postgres" },
+      "fieldConfig": { "defaults": { "min": 0, "max": 1, "decimals": 2, "color": { "mode": "continuous-GrYlRd" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" },
+      "targets": [ { "refId": "A", "format": "table", "rawQuery": true, "rawSql": "SELECT round(avg(judge_overall),2) AS \"Avg judge\" FROM decision_ledger;", "datasource": { "type": "postgres", "uid": "decision-postgres" } } ]
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Decisions over time",
+      "gridPos": { "h": 8, "w": 14, "x": 0, "y": 4 },
+      "datasource": { "type": "postgres", "uid": "decision-postgres" },
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "bars", "fillOpacity": 40, "lineWidth": 1 } }, "overrides": [] },
+      "options": { "legend": { "showLegend": true }, "tooltip": { "mode": "multi" } },
+      "targets": [ { "refId": "A", "format": "time_series", "rawQuery": true, "rawSql": "SELECT $__timeGroupAlias(created_at,'1h'), action AS metric, count(*) AS \"decisions\" FROM decision_ledger WHERE $__timeFilter(created_at) GROUP BY 1, action ORDER BY 1;", "datasource": { "type": "postgres", "uid": "decision-postgres" } } ]
+    },
+    {
+      "id": 6, "type": "piechart", "title": "Action mix",
+      "gridPos": { "h": 8, "w": 10, "x": 14, "y": 4 },
+      "datasource": { "type": "postgres", "uid": "decision-postgres" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "legend": { "showLegend": true, "placement": "right" }, "pieType": "donut", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [ { "refId": "A", "format": "table", "rawQuery": true, "rawSql": "SELECT action AS metric, count(*) AS value FROM decision_ledger GROUP BY action ORDER BY value DESC;", "datasource": { "type": "postgres", "uid": "decision-postgres" } } ]
+    },
+    {
+      "id": 7, "type": "table", "title": "Recent decisions (auditable ledger)",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 12 },
+      "datasource": { "type": "postgres", "uid": "decision-postgres" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "showHeader": true },
+      "targets": [ { "refId": "A", "format": "table", "rawQuery": true, "rawSql": "SELECT created_at AS \"time\", subject, round(model_prob,3) AS model, round(market_prob,3) AS market, round(edge,3) AS signal, action, round(judge_overall,2) AS judge, judge_verdict AS verdict, policy_approved AS approved FROM decision_ledger ORDER BY created_at DESC LIMIT 25;", "datasource": { "type": "postgres", "uid": "decision-postgres" } } ]
+    }
+  ]
+}

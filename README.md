@@ -32,7 +32,7 @@ The **evidence sources and the F1/prediction-market domain in this build are a r
 | 2.8 | **Connects enterprise systems, automation platforms, and AI services** | **Eight heterogeneous systems, one graph.** A market-signal API, championship data, two weather services, a news feed, the local LLM runtime, Postgres, and Pub/Sub are wired together in a single workflow — each behind a typed adapter, so a source can be swapped without touching the pipeline. (see [Data sources](#data-sources).) |
 | 2.9.1 | **Development standard** | **Quality is enforced by machines, not good intentions.** TDD with a hard coverage gate blocks undertested merges, and a *second* AI — a local Qwen adversarial reviewer — critiques every PR's diff in CI; workflow JSON is validated against n8n's own node schemas. Compatible with the **n8n-mcp** toolchain and **n8n-skills** for AI-assisted authoring. (`vitest.config.ts` · `scripts/ci/ai-review.mjs` · `.github/workflows/ci.yml`.) |
 | 2.9.2 / 2.9.6 | **Deployment / environment strategy** | **Ship the whole platform from a clean checkout, repeatably.** Infrastructure is declarative Terraform, releases deploy through GitHub Actions over keyless WIF, and cost/topology are dialed per environment with documented toggles (`enable_gpu`, `enable_queue_mode`, `n8n_public`). (`infra/terraform/` · `.github/workflows/cd.yml`.) |
-| 2.9.3 / 2.9.8 | **Monitoring / observability** | **You can see what every decision cost and whether the system is healthy.** A Cloud Monitoring dashboard, a log-based metric on decision events, and a 5xx alert policy all ship as code alongside the app. (`infra/terraform/monitoring.tf` + `dashboards/n8n-overview.json`.) |
+| 2.9.3 / 2.9.8 | **Monitoring / observability** | **You can see what the platform is deciding *and* whether it's healthy.** A provisioned **Grafana** dashboard reads the `decision_ledger` (volume, approval rate, judge scores, action mix) for decision analytics; Cloud Monitoring adds an infra dashboard, a log-based metric on decision events, and a 5xx alert policy — all as code. (`infra/grafana/` · `infra/terraform/monitoring.tf` + `dashboards/n8n-overview.json` — see [Observability](#observability).) |
 | 2.9.4 | **Reliability** | **State survives restarts and is auditable after the fact.** Cloud SQL Postgres durably holds both n8n's own state and the decision ledger, with full provenance (`decision_runs` / `evidence_snapshots` / `decision_ledger`) so any run can be reconstructed. (`infra/terraform/cloudsql.tf` · `db/schema.sql`.) |
 | 2.9.5 | **Governance** | **No decision escapes policy or the audit trail.** A deterministic guardrail/policy gate runs independently of the AI, every decision is written to an immutable ledger with its rationale and any policy violations, and access is least-privilege IAM with all secrets externalized. (`packages/core/src/guardrail.ts` · `db/schema.sql` · `infra/terraform/{iam,wif}.tf`.) |
 | 2.9.7 | **Reusable frameworks / templates / prompt patterns** | **The reusable parts are packaged for reuse.** The domain-agnostic sub-workflow, the parameterized agent/judge prompt builders, and the typed contracts are all callable building blocks with no domain strings baked in. (`workflows/00-decision-framework.json` · `packages/core/src/{agent,judge}.ts:buildPrompt`.) |
@@ -87,7 +87,7 @@ The pipeline's code and raw CLI output use the short codes `BUY` / `HOLD` / `PAS
 
 ![Platform architecture — decision-orchestration-platform on GCP](docs/img/architecture.png)
 
-Deployed live to a GCP project (`infra/terraform/`) provisioned for this platform. n8n runs on Cloud Run today; the Ollama GPU MIG is written and `terraform apply`-ready but deferred pending an L4 quota grant on the project (see `BLOCKERS.md`).
+Deployed live to a GCP project (`infra/terraform/`) provisioned for this platform. n8n runs on Cloud Run and the Ollama GPU MIG is `terraform apply`-ed (instance template, autoscaler, internal load balancer; n8n auto-wired to it) — it idles at zero and warms on demand (see [Deploy to GCP](#deploy-to-gcp) and `BLOCKERS.md`).
 
 ## Testing & Quality Harness
 
@@ -215,6 +215,20 @@ Workflows are **version-controlled and deployed programmatically** — `workflow
 | ~100 full demo runs | **≈ $1** of GPU + the flat ~$8/mo DB |
 
 Cloud Run n8n is scale-to-zero (pennies per run); the GPU bills only while scaled up, so a 10-minute demo is a few cents. `make destroy` tears everything down.
+
+## Observability
+
+Two layers: a **decision-analytics dashboard** you run locally, and **infra health + alerting** in GCP.
+
+**Local — Grafana over the decision ledger.** `docker compose up` also starts **Grafana** (http://localhost:3000), auto-provisioned with a Postgres datasource and a dashboard on the `decision_ledger` table — zero manual setup. It surfaces decision volume, policy-approval rate, the LLM-judge pass rate and average score, the action mix, and the full auditable row-level ledger:
+
+![Grafana dashboard over the decision ledger](docs/img/grafana-decisions.png)
+
+Everything is version-controlled in `infra/grafana/` (`provisioning/datasources/`, `provisioning/dashboards/`, `dashboards/decisions.json`) and provisioned on boot — the dashboard is code, not a click-ops artifact. (If port 3000 is taken, set `GRAFANA_PORT`.)
+
+**GCP-native — Cloud Monitoring + alerting.** In the deployed stack, health monitoring is Google-native and ships as Terraform: a Cloud Monitoring **dashboard** (`infra/terraform/dashboards/n8n-overview.json`), a **log-based metric** counting decision events (`google_logging_metric.decisions_logged`), and a **5xx-rate alert policy** on the n8n Cloud Run service (`google_monitoring_alert_policy.n8n_error_rate`) — all in `infra/terraform/monitoring.tf`, with structured logs from every run flowing to Cloud Logging.
+
+Together they answer two different questions: the Grafana board shows **what the platform is deciding and whether the AI is being governed well**; Cloud Monitoring shows **whether the platform is healthy**.
 
 ## Project layout
 

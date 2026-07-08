@@ -97,7 +97,35 @@ services:
     env_file:
       - .env
 
+  # Observability: a Grafana dashboard over the decision_ledger (decision volume,
+  # policy-approval rate, judge scores, action mix, and the auditable row-level
+  # ledger). Provisioned automatically — datasource + dashboard load on boot.
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: f1-grafana
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GF_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_ADMIN_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_USERS_DEFAULT_THEME: dark
+      # consumed by infra/grafana/provisioning/datasources/postgres.yml
+      DB_POSTGRESDB_USER: ${DB_POSTGRESDB_USER:-n8n}
+      DB_POSTGRESDB_PASSWORD: ${DB_POSTGRESDB_PASSWORD:-n8n}
+      DB_POSTGRESDB_DATABASE: ${DB_POSTGRESDB_DATABASE:-n8n}
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/etc/grafana/dashboards:ro
+
 volumes:
   postgres-data:
   n8n-data:
+  grafana-data:
   ollama-data:
